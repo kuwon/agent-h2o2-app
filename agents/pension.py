@@ -3,7 +3,8 @@ from typing import Optional
 
 from agno.agent import Agent, AgentKnowledge
 from agno.models.openai import OpenAIChat
-from agno.models.ollama import Ollama
+from agno.models.ollama import Ollama 
+from agno.embedder.ollama import OllamaEmbedder
 from agno.storage.agent.postgres import PostgresAgentStorage
 from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.vectordb.pgvector import PgVector, SearchType
@@ -45,7 +46,11 @@ def get_pension(
         storage=PostgresAgentStorage(table_name="pension_sessions", db_url=db_url),
         # Knowledge base for the agent
         knowledge=AgentKnowledge(
-            vector_db=PgVector(table_name="pension_knowledge", db_url=db_url, search_type=SearchType.hybrid)
+            vector_db=PgVector(
+                table_name="pension_knowledge", 
+                db_url=db_url,
+                embedder=OllamaEmbedder(id="openhermes"), 
+                search_type=SearchType.hybrid)
         ),
         # Description of the agent
         description=dedent("""\

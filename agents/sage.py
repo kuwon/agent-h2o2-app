@@ -3,7 +3,6 @@ from typing import Optional
 
 from agno.agent import Agent, AgentKnowledge
 from agno.models.openai import OpenAIChat
-from agno.models.ollama import Ollama
 from agno.storage.agent.postgres import PostgresAgentStorage
 from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.vectordb.pgvector import PgVector, SearchType
@@ -31,14 +30,11 @@ def get_sage(
         agent_id="sage",
         user_id=user_id,
         session_id=session_id,
-        model=Ollama(
-            id="qwen3:14b",
-            host="host.docker.internal:11434"),
-        #model=OpenAIChat(
-        #    id=model_id,
-        #    max_completion_tokens=agent_settings.default_max_completion_tokens,
-        #    temperature=agent_settings.default_temperature if model_id != "o3-mini" else None,
-        #),
+        model=OpenAIChat(
+           id=model_id,
+           max_completion_tokens=agent_settings.default_max_completion_tokens,
+           temperature=agent_settings.default_temperature if model_id != "o3-mini" else None,
+        ),
         # Tools available to the agent
         tools=[DuckDuckGoTools()],
         # Storage for the agent

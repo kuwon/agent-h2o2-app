@@ -44,7 +44,7 @@ async def body() -> None:
     ####################################################################
     # Initialize User and Session State
     ####################################################################
-    user_id = st.sidebar.text_input(":technologist: Username", value="Ava")
+    user_id = st.sidebar.text_input(":technologist: Username", value="김한투")
 
     ####################################################################
     # Model selector
