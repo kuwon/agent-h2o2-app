@@ -9,6 +9,11 @@ class AgentSettings(BaseSettings):
     gpt_4_mini: str = "gpt-4o-mini"
     gpt_4: str = "gpt-4o"
     embedding_model: str = "text-embedding-3-small"
+
+    qwen: str = "qwen3:14b"
+    open_embedding_model: str = "openhermes"
+    local_ollama_host: str = "host.docker.internal:11434"
+
     default_max_completion_tokens: int = 16000
     default_temperature: float = 0
 

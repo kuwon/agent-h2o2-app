@@ -31,7 +31,7 @@ knowledge_tools = KnowledgeTools(
     think=True,
     search=True,
     analyze=True,
-    add_few_shot=True,
+    add_few_shot=False,
 )
 
 simulation_agent = Agent(
@@ -48,7 +48,7 @@ simulation_agent = Agent(
     #     temperature=team_settings.default_temperature,
     # ),
     tools=[knowledge_tools],
-    instructions=dedent("""
+    instructions=dedent(""" Show results only.
     """),
     storage=PostgresStorage(table_name="simulation-agent", db_url=db_url, auto_upgrade_schema=True),
     add_history_to_messages=True,
@@ -87,7 +87,7 @@ def get_pension_master_team(
         name="Pension Master Team",
         team_id="pension-master-team",
         mode="route",
-        members=[simulation_agent, web_agent],
+        members=[simulation_agent],
         instructions=[
             "You are a team of pension simulation!. Use result of simulation_agent first.",
         ],

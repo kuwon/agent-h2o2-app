@@ -27,43 +27,36 @@ def get_pension(
 
     model_id = model_id or agent_settings.gpt_4_mini
 
-    return Agent(
+    pension_agent = Agent(
         name="Pension",
         agent_id="pension",
         user_id=user_id,
         session_id=session_id,
         model=Ollama(
-            id="qwen3:14b",
-            host="host.docker.internal:11434"),
+            id=agent_settings.qwen,
+            host=agent_settings.local_ollama_host),
         #model=OpenAIChat(
         #    id=model_id,
         #    max_completion_tokens=agent_settings.default_max_completion_tokens,
         #    temperature=agent_settings.default_temperature if model_id != "o3-mini" else None,
         #),
         # Tools available to the agent
-        tools=[DuckDuckGoTools()],
+        #tools=[DuckDuckGoTools()],
+        tools=[],
         # Storage for the agent
         storage=PostgresAgentStorage(table_name="pension_sessions", db_url=db_url),
         # Knowledge base for the agent
         knowledge=AgentKnowledge(
             vector_db=PgVector(
-                table_name="pension_knowledge", 
-                db_url=db_url,
-                embedder=OllamaEmbedder(id="openhermes"), 
-                search_type=SearchType.hybrid)
+                table_name="pension_knowledge"
+                , db_url=db_url
+                , embedder=OllamaEmbedder(id=agent_settings.open_embedding_model)
+                #,search_type=SearchType.hybrid
+            ) 
+               
         ),
         # Description of the agent
-        description=dedent("""\
-            You are an AI Pension Planner. Your role is below:
-                1. Analyze clients' financial history and current situation
-                2. Provide expertise on Korean pension trends and IRP accounts
-                3. Develop personalized retirement strategies for each clients
-                4. Optimize pension fund investments to maximize returns
-                5. Project retirement income and expenses accurately
-                6. Advise on tax-efficient withdrawal strategies
-                7. Assist clients in setting long-term financial goals
-                8. Guide clients from the start of their career through to retirement.
-                           
+        description=dedent(f"""\
             You have access to a knowledge base full of user-provided information and the capability to search the web if needed.
             Your responses should be clear, concise, and supported by citations from the knowledge base and/or the web.\
         """),
@@ -72,40 +65,17 @@ def get_pension(
             Respond to the user by following the steps below:
 
             1. Always search your knowledge base for relevant information
-            - First, analyze the user's message and identify 1-3 precise search terms to search your knowledge base.
-            - Then, search your knowledge base for relevant information using the `search_knowledge_base` tool.
+            - Rather than relying on your existing knowledge, first search the knowledge base for content similar to the question.
             - Note: You must always search your knowledge base unless you are sure that the user's query is not related to the knowledge base.
 
-            2. Search the web if no relevant information is found in your knowledge base
-            - If knowledge base search yields insufficient results, use the `duckduckgo_search` tool to find relevant information from the web.
-            - Focus on reputable sources and recent information.
-            - Cross-reference information from multiple sources when possible.
+            2. Confirm user want to continue searching if no relevant information is found in your knowledge base               
 
-            3. Memory & Context Management:
-            - You will be provided the last 3 messages from the chat history.
-            - If needed, use the `get_chat_history` tool to retrieve more messages from the chat history.
-            - Reference previous interactions when relevant and maintain conversation continuity.
-            - Keep track of user preferences and prior clarifications.
-
-            4. Construct Your Response
-            - **Start** with a succinct, clear and direct answer that immediately addresses the user's query.
-            - **Then expand** the answer by including:
-                - A clear explanation with context and definitions.
-                - Supporting evidence such as statistics, real-world examples, and data points.
-                - Clarifications that address common misconceptions.
-            - Expand the answer only if the query requires more detail. Simple questions like: "What is the weather in Tokyo?" or "What is the capital of France?" don't need an in-depth analysis.
-            - Ensure the response is structured so that it provides quick answers as well as in-depth analysis for further exploration.
-            - Avoid hedging phrases like 'based on my knowledge' or 'depending on the information'
-            - Always include citations from the knowledge base and/or the web.
-
-            5. Enhance Engagement
-            - After generating your answer, ask the user follow-up questions and suggest related topics to explore.
-
-            6. Final Quality Check & Presentation ✨
+            3. Final Quality Check & Presentation ✨
             - Review your response to ensure clarity, depth, and engagement.
             - Strive to be both informative for quick queries and thorough for detailed exploration.
+            - Result Lnaguage should be Korean if query looks like Korean.
 
-            7. In case of any uncertainties, clarify limitations and encourage follow-up queries.\
+            4. In case of any uncertainties, clarify limitations and encourage follow-up queries.\
         """),
         additional_context=additional_context,
         # Format responses using markdown
@@ -120,3 +90,4 @@ def get_pension(
         # Show debug logs
         debug_mode=debug_mode,
     )
+    return pension_agent

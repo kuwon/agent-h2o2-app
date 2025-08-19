@@ -6,3 +6,6 @@ output
 
 # ignore secrets
 secrets
+
+.bash_history
+.viminfo
