@@ -41,6 +41,8 @@ container_env = {
     # Enable monitoring
     "AGNO_MONITOR": "True",
     "AGNO_API_KEY": getenv("AGNO_API_KEY"),
+    # OLLAMA
+    "OLLAMA_HOST": "http://host.docker.internal:11434",
     # Database configuration
     "DB_HOST": dev_db.get_db_host(),
     "DB_PORT": dev_db.get_db_port(),

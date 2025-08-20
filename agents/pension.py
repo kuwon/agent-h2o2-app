@@ -33,8 +33,9 @@ def get_pension(
         user_id=user_id,
         session_id=session_id,
         model=Ollama(
-            id=agent_settings.qwen,
-            host=agent_settings.local_ollama_host),
+            id=agent_settings.qwen
+            , #host=agent_settings.local_ollama_host)
+        ),
         #model=OpenAIChat(
         #    id=model_id,
         #    max_completion_tokens=agent_settings.default_max_completion_tokens,
@@ -51,7 +52,7 @@ def get_pension(
                 table_name="pension_knowledge"
                 , db_url=db_url
                 , embedder=OllamaEmbedder(id=agent_settings.open_embedding_model)
-                #,search_type=SearchType.hybrid
+                ,search_type=SearchType.hybrid
             ) 
                
         ),

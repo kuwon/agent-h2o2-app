@@ -26,6 +26,7 @@ dependencies = [
   "aiofiles",
   "newspaper4k",
   "lxml_html_clean",
+  "ollama",
 ]
 
 [project.optional-dependencies]
