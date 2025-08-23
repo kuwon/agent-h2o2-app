@@ -1,0 +1,43 @@
+
+
+* docker ps | grep "agent-app-ui" | awk -F' ' '{print $1}' | xargs docker logs -f
+
+
+* 사용자가 챗봇을 쓴다고 했을 때 처음에는 의도를 분석해서 단순 질의인지를 tool을 써야 하는지 등을 판단해야함.
+intent 분류하고, 그에 맞춰서 필요한 agent 실행 시키기
+대화의 연결을 감안하여 이어서 수행할수 있을지도 확인해야함
+예를 들어 고객에 대한 디테일한 정보를 얻은 뒤에 그걸 활용
+
+지금은 intent를 3개로 봐서
+- DB를 기반으로 하는 고객 정보 제공
+- simulator 계산 값 제공
+- 정책 Q&A
+
+각각의 agent가 수행하는 역할에 대해서는 정리해야하고
+
+Q: *** 고객은 연금 개시가 가능해?
+Needs
+ - 고객 정보 DB
+    - 이름
+    - 나이
+    - 수령연차(RCVE_ODYR: Receive Order of Year) -> 이건 개시일같은 날짜를 주고 계산 필요할수 있음
+    - 계좌 평가액 (ACNT_EVLU_AMT: Account Evaluation Amount) -> 이것도 상품 구분에 따라서 여러가지 
+    - (필요) 계좌 구분
+    - 계약이랑 연결
+ - 수령 조건 Knowledge
+
+insert into kis_customers (customer_id, customer_name, brth_dt, age_band) values
+(1111, '김한투', '19650302', 60)
+,(2222, '이미래', '19550811', 70)
+,(3333, '최삼성', '19711124', 50);
+
+
+insert into kis_accounts (account_id, customer_id, acnt_type, prd_type_cd, acnt_bgn_dt, acnt_evlu_amt)
+values
+ (41500000, 2222, 'CMA', 21, '20001122', 50000000)
+
+,(41598765, 1111, 'CMA', 21, '19991211', 103335918)
+,(41598765, 1111, '연금저축', 22, '20140714', 67852849)
+,(41598765, 1111, 'IRP', 29, '20121215', 733603018)
+,(41598765, 1111, 'ISA', 01, '20210319', 107360026)
+,(21500146000110, 1111, 'DC', 999, '20210630', 241155140);

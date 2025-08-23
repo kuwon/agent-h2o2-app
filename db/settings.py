@@ -2,7 +2,7 @@ from os import getenv
 from typing import Optional
 
 from pydantic_settings import BaseSettings
-
+from agno.utils.log import logger
 
 class DbSettings(BaseSettings):
     """Database settings that can be set using environment variables.
@@ -43,6 +43,15 @@ class DbSettings(BaseSettings):
             raise ValueError("Could not build database connection")
         return db_url
 
+    def get_db_info(self) -> str:
+        return {
+            "host": self.db_host, 
+            "port": self.db_port, 
+            "db_name": self.db_database, 
+            "user": self.db_user, 
+            "password": self.db_pass, 
+            "table_schema": self.db_database
+        }
 
 # Create DbSettings object
 db_settings = DbSettings()

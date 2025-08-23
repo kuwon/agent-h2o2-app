@@ -1,15 +1,13 @@
 from enum import Enum
 from typing import List, Optional
 
-from agents.sage import get_sage
-from agents.scholar import get_scholar
-from agents.pension import get_pension
+from agents.pension_policy import get_pension_policy
+from agents.intent import get_intent
 
 
 class AgentType(Enum):
-    SAGE = "sage"
-    SCHOLAR = "scholar"
-    PENSION = "pension"
+    PENSION_POLICY = "pension_policy"
+    INTENT = "intent"
 
 
 def get_available_agents() -> List[str]:
@@ -24,9 +22,7 @@ def get_agent(
     session_id: Optional[str] = None,
     debug_mode: bool = True,
 ):
-    if agent_id == AgentType.SAGE:
-        return get_sage(model_id=model_id, user_id=user_id, session_id=session_id, debug_mode=debug_mode)
-    elif agent_id == AgentType.PENSION:
-        return get_pension(model_id=model_id, user_id=user_id, session_id=session_id, debug_mode=debug_mode)
+    if agent_id == AgentType.PENSION_POLICY:
+        return get_pension_policy(model_id=model_id, user_id=user_id, session_id=session_id, debug_mode=debug_mode)
     else:
-        return get_scholar(model_id=model_id, user_id=user_id, session_id=session_id, debug_mode=debug_mode)
+        raise get_intent(model_id=model_id, user_id=user_id, session_id=session_id, debug_mode=debug_mode)

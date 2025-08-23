@@ -13,7 +13,7 @@ from agents.settings import agent_settings
 from db.session import db_url
 
 
-def get_pension(
+def get_pension_policy(
     model_id: Optional[str] = None,
     user_id: Optional[str] = None,
     session_id: Optional[str] = None,
@@ -28,8 +28,8 @@ def get_pension(
     model_id = model_id or agent_settings.gpt_4_mini
 
     pension_agent = Agent(
-        name="Pension",
-        agent_id="pension",
+        name="Pension Policy",
+        agent_id="pension_policy",
         user_id=user_id,
         session_id=session_id,
         model=Ollama(
