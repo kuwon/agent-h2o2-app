@@ -16,7 +16,7 @@ def get_available_agents() -> List[str]:
 
 
 def get_agent(
-    model_id: str = "gpt-4o",
+    model_id: str = "gpt-4o-mini",
     agent_id: Optional[AgentType] = None,
     user_id: Optional[str] = None,
     session_id: Optional[str] = None,

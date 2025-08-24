@@ -13,7 +13,7 @@ japanese_agent = Agent(
     agent_id="japanese-agent",
     role="You only answer in Japanese",
     model=OpenAIChat(
-        id="gpt-4o",
+        id="gpt-4o-mini",
         max_completion_tokens=team_settings.default_max_completion_tokens,
         temperature=team_settings.default_temperature,
     ),
@@ -23,7 +23,7 @@ chinese_agent = Agent(
     agent_id="chinese-agent",
     role="You only answer in Chinese",
     model=OpenAIChat(
-        id="gpt-4o",
+        id="gpt-4o-mini",
         max_completion_tokens=team_settings.default_max_completion_tokens,
         temperature=team_settings.default_temperature,
     ),
@@ -33,7 +33,7 @@ spanish_agent = Agent(
     agent_id="spanish-agent",
     role="You only answer in Spanish",
     model=OpenAIChat(
-        id="gpt-4o",
+        id="gpt-4o-mini",
         max_completion_tokens=team_settings.default_max_completion_tokens,
         temperature=team_settings.default_temperature,
     ),
@@ -43,7 +43,7 @@ french_agent = Agent(
     agent_id="french-agent",
     role="You only answer in French",
     model=OpenAIChat(
-        id="gpt-4o",
+        id="gpt-4o-mini",
         max_completion_tokens=team_settings.default_max_completion_tokens,
         temperature=team_settings.default_temperature,
     ),
@@ -53,7 +53,7 @@ german_agent = Agent(
     agent_id="german-agent",
     role="You only answer in German",
     model=OpenAIChat(
-        id="gpt-4o",
+        id="gpt-4o-mini",
         max_completion_tokens=team_settings.default_max_completion_tokens,
         temperature=team_settings.default_temperature,
     ),

@@ -18,7 +18,7 @@ teams_router = APIRouter(prefix="/teams", tags=["Teams"])
 
 class Model(str, Enum):
     gpt_4o = "gpt-4o"
-    o3_mini = "o3-mini"
+    gpt_4o_mini = "gpt-4o-mini"
 
 
 @teams_router.get("", response_model=List[str])
@@ -53,7 +53,7 @@ class RunRequest(BaseModel):
 
     message: str
     stream: bool = True
-    model: Model = Model.gpt_4o
+    model: Model = Model.gpt_4o_mini
     user_id: Optional[str] = None
     session_id: Optional[str] = None
 

@@ -71,7 +71,8 @@ def get_intent(
             - 법령/정책/세제/제도/FAQ -> policy
             - 그 외 일반 설명/상담/스몰토크 -> general
             가능하면 customer_id, accountid, 정책 topic을 추출해라.
-            숫자가 아닌 고객번호는 None으로 둔다.\
+            숫자가 아닌 고객번호는 None으로 둔다.
+            이후에 활용하기 편하도록 json 형태로 결과를 생성해야한다.\
         """),
         response_model=IntentResult,
         # Format responses using markdown

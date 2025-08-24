@@ -112,14 +112,23 @@ async def body() -> None:
                     # Run the team and stream the response
                     run_response = await team.arun(user_message, stream=True)
                     async for resp_chunk in run_response:
-                        # Display tool calls if available
-                        if resp_chunk.tools and len(resp_chunk.tools) > 0:
+                        # 도구 호출 이벤트 처리
+                        if hasattr(resp_chunk, "tools") and resp_chunk.tools:
                             display_tool_calls(tool_calls_container, resp_chunk.tools)
 
-                        # Display response
-                        if resp_chunk.content is not None:
+                        # 일반 텍스트 응답 처리
+                        if hasattr(resp_chunk, "content") and resp_chunk.content is not None:
                             response += resp_chunk.content
                             resp_container.markdown(response)
+
+                        # # Display tool calls if available
+                        # if resp_chunk.tools and len(resp_chunk.tools) > 0:
+                        #     display_tool_calls(tool_calls_container, resp_chunk.tools)
+
+                        # # Display response
+                        # if resp_chunk.content is not None:
+                        #     response += resp_chunk.content
+                        #     resp_container.markdown(response)
 
                     # Add the response to the messages
                     if team.run_response is not None:
