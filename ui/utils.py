@@ -43,7 +43,7 @@ async def initialize_workflow_session_state(workflow_name: str):
 async def selected_model() -> str:
     """Display a model selector in the sidebar."""
     model_options = {
-        "qwen": "qwen3:14b",
+        "qwen": "qwen3:30b",
         #"gpt-4o": "gpt-4o",
         "gpt-4o-mini": "gpt-4o-mini",
     }

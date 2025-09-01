@@ -36,20 +36,19 @@ def get_pension_master_team(
         mode="route",
         members=[get_intent(), get_pension_policy(), get_pension_account()],
         instructions=dedent("""\
-            먼저 intent agent를 활용해서 사용자 쿼리를 분석하고 의도를 파악해.
-            case A: 만약 사용자의 질문이 IRP/DC 등 퇴직연금 관련된 계좌 정보나 그 사용자에 대한 정보라고 한다면 pension_policy Agent를 사용해서 해당 정보를 획득해.
-            case B: 퇴직연금 정책에 대한 질문을 한다면 pension_account agent가 가진 정책 knowledge를 활용하되, 이에 대한 고객/계좌 정보를 제대로 가지고 있는지를 확인해서 필요하면 그 정보를 추가로 얻도록 해야함.
-            
-            사용자 입력 언어를 잘 파악하고 해당 언어로 답변이 될수 있도록 유지를 해줘. 기본적으로는 한국어를 사용해.
-            
-            답변은 간결하게 해주고, 그에 대한 근거 및 원천에 대해서도 분명하게 표시해줘.
-            
-            결과를 모르면 모른다고 정확하게 이야기해줘.
-                            
+            Shared rules:
+            - Evidence-only responses (Policy KB, PostgreSQL DB).
+            - If evidence is missing/insufficient, respond with "unknown / verification needed."
+            - Attach provenance for every figure/condition/definition (doc/article/date or SQL+params).
+            - Protect PII; mask account numbers.
+            - State "as-of" date if recency is uncertain.                            
         """),
         session_id=session_id,
         user_id=user_id,
-        description="퇴직연금에 대한 정보를 얻기 위해서 고객/계좌 정보나 관련 정책 정보를 조합하여 사용자가 원하는 정보를 얻게 도와주는 assistant!",
+        description=dedent("""\
+                           The team answers retirement-pension queries only using the Policy KB and the account/transaction DB. 
+                           No speculation or unsupported completions. 
+                           If evidence is insufficient, explicitly say so and request further verification."""),
         model=Ollama(id=agent_settings.qwen),
         success_criteria="A good and simple answer",
         enable_agentic_context=True,

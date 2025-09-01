@@ -2,6 +2,8 @@
 
 * docker ps | grep "agent-app-ui" | awk -F' ' '{print $1}' | xargs docker logs -f
 
+docker exec -it agent-app-api alembic -c db/alembic.ini revision --autogenerate -m "add dc contract db"
+docker exec -it agent-app-api alembic -c db/alembic.ini upgrade head
 
 * 사용자가 챗봇을 쓴다고 했을 때 처음에는 의도를 분석해서 단순 질의인지를 tool을 써야 하는지 등을 판단해야함.
 intent 분류하고, 그에 맞춰서 필요한 agent 실행 시키기
@@ -13,7 +15,9 @@ intent 분류하고, 그에 맞춰서 필요한 agent 실행 시키기
 - simulator 계산 값 제공
 - 정책 Q&A
 
-각각의 agent가 수행하는 역할에 대해서는 정리해야하고
+일단 context를 json으로 가지고 있게 하고, 거기에 simulation type을 가지고 있다면, 그에 따라서 분기하는 방식
+RAG를 쓴다면 그 결과도 이후 질문에 RAG로 활용 가능한지는 따져봐야함
+
 
 Q: *** 고객은 연금 개시가 가능해?
 Needs
@@ -40,4 +44,5 @@ values
 ,(41598765, 1111, '연금저축', 22, '20140714', 67852849)
 ,(41598765, 1111, 'IRP', 29, '20121215', 733603018)
 ,(41598765, 1111, 'ISA', 01, '20210319', 107360026)
-,(21500146000110, 1111, 'DC', 999, '20210630', 241155140);
+,(21500146000110, 1111, 'DC', 29, '20210630', 241155140);
+

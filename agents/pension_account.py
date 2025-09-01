@@ -50,7 +50,7 @@ def get_pension_account(
         storage=PostgresAgentStorage(table_name="pension_account_sessions", db_url=db_url),
         # Description of the agent
         description=dedent(f"""\
-            고객, 계좌 관련된 테이블에서 필요한 정보들을 뽑아서 제공해줌\
+            고객, 계좌 관련된 테이블에서 사용자 질의에 필요한 정보들을 뽑아줌\
         """),
         # Instructions for the agent
         instructions=dedent("""\

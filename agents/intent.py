@@ -24,7 +24,7 @@ class IntentLabel(str, Enum):
 class IntentResult(BaseModel):
     intent: IntentLabel = Field(..., description="user 질문의 1차 의도")
     customer_id: Optional[int] = Field(None, description="고객 관련일 때 customer_id")
-    customer_id: Optional[int] = Field(None, description="계좌 관련일 때 account_id")
+    account_id: Optional[int] = Field(None, description="계좌 관련일 때 account_id")
     topic: Optional[str] = Field(None, description="정책/FAQ 주요 토픽 키워드")
 
 def get_intent(
@@ -62,7 +62,7 @@ def get_intent(
         
         # Description of the agent
         description=dedent(f"""\
-            대화의 의도를 분류. 기본적으로는 퇴직연금에 대한 질의 응답을 하고, 계좌관련이라던지 정책 관련된 부분들에 대해서 제대로 응답하기 위하여 사용자의 질문에서 의도를 분류\
+            대화의 의도를 분류. 기본적으로는 퇴직연금에 대한 질의 응답을 하고, 유형을 파악하여 계좌 관련 agent나 정책 관련 agent를 활용하기 위해 사용자의 질문에서 의도를 분류\
         """),
         # Instructions for the agent
         instructions=dedent("""\

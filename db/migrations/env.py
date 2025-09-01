@@ -71,11 +71,35 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        # row = connection.exec_driver_sql(
+        #     "select current_database(), current_user, current_schema(), current_setting('search_path')"
+        # ).first()
+        # print("[ALEMBIC-CONN]",
+        #     "db=", row[0],
+        #     "user=", row[1],
+        #     "schema=", row[2],
+        #     "search_path=", row[3],
+        # )
+        # # ai 스키마에 보이는 테이블 개수도 확인
+        # cnt = connection.exec_driver_sql(
+        #     "select count(*) from information_schema.tables where table_schema='ai'"
+        # ).scalar_one()
+        # print("[ALEMBIC-CONN] ai.tables.count =", cnt)
+
+
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            include_name=include_name,
-            version_table_schema=target_metadata.schema,
+            #include_name=include_name,
+            include_schemas=True,               # ✅ 스키마를 반영/비교
+            version_table_schema='ai',
+            compare_type=True,
+            compare_server_default=True,
+            include_object=lambda obj, name, type_, reflected, compare_to: (
+                getattr(obj, "schema", None) == "ai"
+                if type_ in {"table","column","index","unique_constraint","foreign_key_constraint","primary_key"}
+                else True
+            ),
         )
 
         with context.begin_transaction():
