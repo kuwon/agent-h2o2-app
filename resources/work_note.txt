@@ -46,3 +46,23 @@ values
 ,(41598765, 1111, 'ISA', 01, '20210319', 107360026)
 ,(21500146000110, 1111, 'DC', 29, '20210630', 241155140);
 
+{
+    'ctrt_no': '계약번호',
+    'odtp_name': '근무처명',
+    'etco_dt': '입사일자',
+    'midl_excc_dt': '중간정산일자',
+    'sst_join_dt': '제도가입일자',
+    'almt_pymt_prca': '부담금납입원금',
+    'utlz_pfls_amt': '운용손익금액',
+    'evlu_acca_smtl_amt': '평가적립금합계금액'
+}
+
+-- pgvector 확장
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- 핵심: text → vector 암시적 캐스트 (문자열을 자동으로 vector로 인식)
+CREATE CAST (text AS vector) WITH INOUT AS IMPLICIT;
+
+-- (선택) varchar → vector도 함께 허용하고 싶으면
+CREATE CAST (varchar AS vector) WITH INOUT AS IMPLICIT;
+

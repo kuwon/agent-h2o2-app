@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [{ name = "Agno", email = "hello@agno.com" }]
 
 dependencies = [
-  "agno[aws]==1.7.9",
+  "agno[aws]==1.8.1",
   "alembic",
   "beautifulsoup4",
   "duckduckgo-search",
@@ -27,6 +27,8 @@ dependencies = [
   "newspaper4k",
   "lxml_html_clean",
   "ollama",
+  "streamlit-aggrid",
+  "plotly"
 ]
 
 [project.optional-dependencies]
