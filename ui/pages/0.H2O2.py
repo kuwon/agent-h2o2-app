@@ -1,10 +1,10 @@
 # st_sample.py
 # -*- coding: utf-8 -*-
-# 퇴직연금 RAG + 시뮬레이터 (요청 반영: 계좌/차트 병치, DC 전체, Clear/Reset 동작, JSON 자동 반영)
-# - DB: kis_customers / kis_accounts / kis_dc_contract
-# - 좌측: 고객 선택→ 요약 테이블, 계좌 정보(좌:차트/우:그리드), DC 계약 정보(전체)
-# - 우측: Clear/Reset 동작 강화, JSON 편집/미리보기
-# - run_pension_simulator: dummy, DEFAULT_PARAM_SCHEMA: notes만
+# 퇴직연금 RAG + 시뮬레이터 (요청 반영 v5)
+# - 고객 선택 셀렉트 라벨 변경
+# - 계좌 유형별 평가금액 분포(가로 막대)로 차트 변경
+# - 고객 변경 시 context 재생성 → JSON 자동 반영
+# - DC 계약은 dc_contracts 하나만 사용(리스트)
 
 import os
 import re
@@ -66,9 +66,9 @@ st.markdown("""
 DEFAULT_PARAM_SCHEMA: Dict[str, Any] = {"notes": ""}
 
 GRID_KEYS = {
-    "cust": "grid_customer_v4",
-    "acct": "grid_acct_v4",
-    "dc": "grid_dc_v4",
+    "cust": "grid_customer_v5",
+    "acct": "grid_acct_v5",
+    "dc": "grid_dc_v5",
 }
 
 # 한/영 라벨 맵 (표시: 한글, 내부: 영문)
@@ -116,15 +116,13 @@ def koreanize_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     ctx = payload.get("context") or {}
     cust = ctx.get("customer")
     accts = ctx.get("accounts") or []
-    dc = ctx.get("dc_contract")
     dcs = ctx.get("dc_contracts") or []
     return {
         "파라미터": payload.get("params"),
         "컨텍스트": {
             "고객": koreanize_dict(cust, KMAP_CUSTOMER),
             "계좌들": [koreanize_dict(a, {**KMAP_ACCOUNT, "_account_id": "_account_id"}) for a in accts],
-            "DC 계약(대표)": koreanize_dict(dc, KMAP_DC),
-            "DC 계약 목록": [koreanize_dict(x, KMAP_DC) for x in dcs],
+            "DC 계약": [koreanize_dict(x, KMAP_DC) for x in dcs],
         },
     }
 
@@ -258,7 +256,8 @@ def aggrid_table(df: pd.DataFrame, key: str, selection_mode="single", height=280
     gob.configure_default_column(sortable=True, resizable=True, filter=enable_filter, wrapText=False, autoHeight=False)
     if selection_mode in ("single", "multiple"):
         gob.configure_selection(selection_mode=selection_mode, use_checkbox=(selection_mode=="multiple"))
-    # 가로 스크롤을 위해 fit_columns 옵션 제어
+    elif selection_mode == "none":
+        pass
     grid_options = gob.build()
     grid_options["suppressHorizontalScroll"] = not allow_horizontal_scroll
     update_mode = GridUpdateMode.SELECTION_CHANGED | GridUpdateMode.FILTERING_CHANGED | GridUpdateMode.MODEL_CHANGED
@@ -266,17 +265,6 @@ def aggrid_table(df: pd.DataFrame, key: str, selection_mode="single", height=280
         df, gridOptions=grid_options, update_mode=update_mode, height=height, key=key,
         fit_columns_on_grid_load=bool(fit_columns_on_load), allow_unsafe_jscode=True, enable_enterprise_modules=False,
     )
-
-def get_first_value_from_selection(selection, key: str):
-    if selection is None: return None
-    if isinstance(selection, list):
-        if not selection: return None
-        first = selection[0]
-        return first.get(key) if isinstance(first, dict) else None
-    if isinstance(selection, pd.DataFrame):
-        if selection.empty or key not in selection.columns: return None
-        return selection.iloc[0][key]
-    return None
 
 
 # ==================== Context Builders ====================
@@ -329,12 +317,11 @@ def build_context_from_selection() -> Dict[str, Any]:
 
     accts = _rows_to_accounts(df_acct)
     dc_list = _rows_to_dc_list(df_dc)
-    dc_first = (dc_list[0] if dc_list else None)
 
-    return {"customer": cust, "accounts": accts, "dc_contract": dc_first, "dc_contracts": dc_list}
+    return {"customer": cust, "accounts": accts, "dc_contracts": dc_list}
 
 def build_context_for_chat() -> Dict[str, Any]:
-    return st.session_state.get("context", {"customer": None, "accounts": [], "dc_contract": None, "dc_contracts": []})
+    return st.session_state.get("context", {"customer": None, "accounts": [], "dc_contracts": []})
 
 
 # ==================== Dummy Simulator / Agent ====================
@@ -396,7 +383,7 @@ def run_agent_stream(user_text: str, ctx: Dict[str, Any], debug: bool = False):
 st.session_state.setdefault("messages", [])
 st.session_state.setdefault("last_debug", {"events": [], "error": None, "timing": {}})
 st.session_state.setdefault("sim_params", DEFAULT_PARAM_SCHEMA.copy())
-st.session_state.setdefault("context", {"customer": None, "accounts": [], "dc_contract": None, "dc_contracts": []})
+st.session_state.setdefault("context", {"customer": None, "accounts": [], "dc_contracts": []})
 st.session_state.setdefault("selected_customer", None)
 
 # DB 로드
@@ -415,22 +402,21 @@ with left:
     st.markdown('<div class="panel-soft flush-top">', unsafe_allow_html=True)
     st.subheader("고객/계좌 정보")
 
-    # 고객명 검색 + 단건 요약 (테이블 카드)
-    st.caption("① 고객 검색 → 선택")
+    # 고객명 검색 (캡션 삭제, 라벨 변경)
     all_names = st.session_state.df_cust["고객 이름"].dropna().astype(str).tolist()
-    name_selected = st.selectbox("고객 이름 검색", options=[""] + sorted(all_names), index=0,
-                                 help="검색창에 일부만 입력해도 됩니다.")
+    name_selected = st.selectbox("고객 이름을 선택하세요. 검색도 가능합니다", options=[""] + sorted(all_names), index=0)
 
+    # 선택 고객 반영
     if name_selected:
         filtered_cust = st.session_state.df_cust[st.session_state.df_cust["고객 이름"] == name_selected]
     else:
-        filtered_cust = st.session_state.df_cust.iloc[0:0]  # 선택 없을 때는 비표시
+        filtered_cust = st.session_state.df_cust.iloc[0:0]
 
     if not filtered_cust.empty:
         r = filtered_cust.iloc[0]
         st.session_state.selected_customer = r["_customer_id"]
 
-        # 요약 테이블 카드 (프로필 이미지 없음)
+        # 고객 요약 테이블 카드
         st.markdown(f"""
         <div class="summary-card">
           <table>
@@ -446,7 +432,7 @@ with left:
 
     st.markdown("---")
 
-    # ② 계좌 정보: (좌) 차트 / (우) 그리드
+    # ② 계좌 정보 (좌: 차트 / 우: 그리드)
     st.caption("② 계좌 정보")
     if st.session_state.selected_customer:
         st.session_state.df_acct = load_accounts_from_db(st.session_state.selected_customer)
@@ -455,20 +441,21 @@ with left:
         col_chart, col_grid = st.columns([1, 1], gap="large")
 
         with col_chart:
-            st.markdown("**계좌별 평가금액 분포**")
+            st.markdown("**계좌 유형별 평가금액 분포**")
             if df_acct.empty or pd.to_numeric(df_acct["평가적립금"], errors="coerce").fillna(0).sum() == 0:
                 st.info("표시할 평가적립금이 없습니다.")
             else:
                 tmp = df_acct.copy()
                 tmp["평가적립금"] = pd.to_numeric(tmp["평가적립금"], errors="coerce").fillna(0)
-                # 계좌번호별 바차트, 색상=계좌 유형(범례 표시)
-                fig = px.bar(tmp, x="계좌 번호", y="평가적립금", color="계좌 유형", text="평가적립금")
+                grp = tmp.groupby("계좌 유형", dropna=False)["평가적립금"].sum().reset_index().sort_values("평가적립금", ascending=True)
+                # 가로 막대: 카테고리(계좌 유형) * 합계, 값 라벨, 범례(계좌 유형) 표시
+                fig = px.bar(grp, x="평가적립금", y="계좌 유형", orientation="h", color="계좌 유형", text="평가적립금")
                 fig.update_traces(texttemplate="%{text:,}", textposition="outside")
-                fig.update_layout(margin=dict(l=0, r=0, t=10, b=0), legend_title_text="계좌 유형")
+                fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), legend_title_text="계좌 유형")
                 st.plotly_chart(fig, use_container_width=True)
 
         with col_grid:
-            # 그리드: 선택 없음, 가로 스크롤 허용, 조인키/고객번호 제거
+            # 선택 없는 그리드, 가로 스크롤 허용, 조인키/고객번호 제외
             view_cols = ["계좌 번호","계좌 유형","상품코드","개설일자","평가적립금"]
             grid_df = df_acct[view_cols].copy()
             aggrid_table(
@@ -479,11 +466,10 @@ with left:
         st.info("고객 선택 시 계좌 정보가 표시됩니다.")
         df_acct = pd.DataFrame(columns=["계좌 번호","계좌 유형","상품코드","개설일자","평가적립금"])
 
-    # ③ DC 계약 정보: 고객의 DC 계좌와 매핑되는 모든 계약
+    # ③ DC 계약 정보: 고객의 DC 계좌와 매핑되는 모든 계약 (dc_contracts만 유지)
     st.markdown("---")
     st.caption("③ DC 계약 정보")
     if not df_acct.empty:
-        # 고객 보유 DC 계좌 id 목록
         dc_acct_ids = df_acct.loc[df_acct["계좌 유형"] == "DC", "_account_id"].dropna().tolist() if "_account_id" in df_acct.columns else []
         st.session_state.df_dc = load_dc_contracts_from_db(dc_acct_ids if dc_acct_ids else None)
     else:
@@ -500,7 +486,7 @@ with left:
     else:
         st.info("표시할 DC 계약 데이터가 없습니다.")
 
-    # ---- 왼쪽 변경 → 컨텍스트 자동 동기화 ----
+    # ---- 왼쪽 변경 → 컨텍스트 자동 동기화 (고객 변경에 반응) ----
     new_ctx = build_context_from_selection()
     if to_json_str(new_ctx) != to_json_str(st.session_state.get("context", {})):
         st.session_state.context = new_ctx
@@ -530,7 +516,7 @@ with right:
             c1, c2 = st.columns(2)
             with c1:
                 if st.button("Clear", use_container_width=True, help="컨텍스트와 메모를 모두 초기화합니다."):
-                    st.session_state.context = {"customer": None, "accounts": [], "dc_contract": None, "dc_contracts": []}
+                    st.session_state.context = {"customer": None, "accounts": [], "dc_contracts": []}
                     st.session_state.sim_params = DEFAULT_PARAM_SCHEMA.copy()  # notes 비움
                     st.rerun()
             with c2:
@@ -590,26 +576,19 @@ with right:
                             if not isinstance(params, dict) or not isinstance(context, dict):
                                 raise ValueError("params/context는 object여야 합니다.")
                             st.session_state.sim_params = {"notes": params.get("notes", "")}
-                            # context 업데이트: dc_contracts 지원 (없으면 빈 리스트)
+                            # context 업데이트: dc_contracts만 유지
                             cust = context.get("customer")
                             accts = context.get("accounts", [])
-                            dc_first = context.get("dc_contract")
                             dc_list = context.get("dc_contracts", [])
                             if cust is not None and not isinstance(cust, dict):
                                 raise ValueError("context.customer는 object여야 합니다.")
                             if not isinstance(accts, list):
                                 raise ValueError("context.accounts는 array여야 합니다.")
-                            if dc_first is not None and not isinstance(dc_first, dict):
-                                raise ValueError("context.dc_contract는 object여야 합니다.")
                             if not isinstance(dc_list, list):
                                 raise ValueError("context.dc_contracts는 array여야 합니다.")
-                            # 호환성: dc_first가 없고 dc_list가 있으면 첫 건 채워 넣기
-                            if not dc_first and dc_list:
-                                dc_first = dc_list[0]
                             st.session_state.context = {
                                 "customer": cust or None,
                                 "accounts": accts or [],
-                                "dc_contract": dc_first or None,
                                 "dc_contracts": dc_list or [],
                             }
                             st.success("JSON을 적용했습니다.")
