@@ -1,9 +1,9 @@
 # st_sample.py
 # -*- coding: utf-8 -*-
-# 퇴직연금 RAG + 시뮬레이터 (요청 반영: 고객명 검색, 파이차트 병치, 계좌 전체 표시, JSON 편집 모드)
-# - DB: kis_customers / kis_accounts / kis_dc_contract
-# - 좌측: 고객명 검색 → 고객 그리드(좌) + 파이차트(우), 아래에 해당 고객의 모든 계좌 그리드
-# - 우측: Clear/Reset 그대로 유지, JSON 미리보기에 '편집 모드(고급)' 추가(내부 JSON 직접 수정 후 적용)
+# 퇴직연금 RAG + 시뮬레이터
+# - 고객명 검색 + 단건 요약 카드 + 파이차트 (범례 숨김, 내부 라벨)
+# - 계좌 전체 + DC 계약 그리드 추가
+# - 왼쪽 컨텍스트 변경 → 오른쪽 JSON 자동 갱신(st.rerun)
 # - run_pension_simulator: dummy, DEFAULT_PARAM_SCHEMA: notes만
 
 import os
@@ -54,6 +54,9 @@ st.markdown("""
 .panel-soft.flush-top { padding-top: 0; }
 .panel-soft > :first-child { margin-top: 0 !important; }
 .v-sep { border-left: 1px solid #e9ecef; height: calc(100vh - 180px); margin: 8px 6px; }
+.kv { display:flex; gap:8px; flex-wrap:wrap; margin:6px 0 10px 0; }
+.kv .item { background:#f8f9fa; border:1px solid #e9ecef; border-radius:10px; padding:8px 10px; font-size:.9rem; }
+.kv .k { color:#666; margin-right:6px; }
 </style>
 <div class="center-title">한투 퇴직마스터</div>
 """, unsafe_allow_html=True)
@@ -63,9 +66,9 @@ st.markdown("""
 DEFAULT_PARAM_SCHEMA: Dict[str, Any] = {"notes": ""}
 
 GRID_KEYS = {
-    "cust": "grid_customer_v2",
-    "acct": "grid_acct_v2",
-    "dc": "grid_dc_v2",
+    "cust": "grid_customer_v3",
+    "acct": "grid_acct_v3",
+    "dc": "grid_dc_v3",
 }
 
 # 한/영 라벨 맵 (표시: 한글, 내부: 영문)
@@ -165,9 +168,6 @@ def _make_engine_with_schema():
 # ==================== DB Loaders ====================
 @st.cache_data(ttl=60)
 def load_customers_from_db() -> pd.DataFrame:
-    """
-    kis_customers: customer_id, customer_name, brth_dt, age_band
-    """
     engine = _make_engine_with_schema()
     sql = text("""SELECT customer_id, customer_name, brth_dt, age_band FROM kis_customers ORDER BY customer_id""")
     with engine.begin() as conn:
@@ -181,9 +181,6 @@ def load_customers_from_db() -> pd.DataFrame:
 
 @st.cache_data(ttl=60)
 def load_accounts_from_db(customer_filter: Optional[Any] = None) -> pd.DataFrame:
-    """
-    kis_accounts: account_id, customer_id, acnt_type, prd_type_cd, acnt_bgn_dt, acnt_evlu_amt
-    """
     engine = _make_engine_with_schema()
     base_sql = """SELECT account_id, customer_id, acnt_type, prd_type_cd, acnt_bgn_dt, acnt_evlu_amt FROM kis_accounts"""
     params: Dict[str, Any] = {}
@@ -212,9 +209,6 @@ def load_accounts_from_db(customer_filter: Optional[Any] = None) -> pd.DataFrame
 
 @st.cache_data(ttl=60)
 def load_dc_contracts_from_db(account_filter: Optional[Any] = None) -> pd.DataFrame:
-    """
-    kis_dc_contract: ctrt_no(=account_id), odtp_name, etco_dt, midl_excc_dt, sst_join_dt, almt_pymt_prca, utlz_pfls_amt, evlu_acca_smtl_amt
-    """
     engine = _make_engine_with_schema()
     schema = _safe_schema(_safe_secret("PG_SCHEMA", "public"))
     base_sql = f"""
@@ -321,25 +315,24 @@ def build_context_from_selection() -> Dict[str, Any]:
                 "acnt_evlu_amt": int(pd.to_numeric(r["평가적립금"], errors="coerce") or 0),
             })
 
-    # DC 계약: 첫 번째 DC 계좌 기준
+    # DC 계약: 모든 선택 계좌에 대해 매핑(가능한 것만)
     dc = None
     if accts:
-        dc_candidates = [a for a in accts if a["acnt_type"] == "DC"]
-        if dc_candidates:
-            aid = dc_candidates[0]["account_id"]
-            row = st.session_state.df_dc.query("_ctrt_no == @aid")
-            if not row.empty:
-                r = row.iloc[0]
-                dc = {
-                    "ctrt_no": r["_ctrt_no"],
-                    "odtp_name": r["근무처명"],
-                    "etco_dt": str(r["입사일자"]),
-                    "midl_excc_dt": str(r["중간정산일자"]) if pd.notna(r["중간정산일자"]) else None,
-                    "sst_join_dt": str(r["제도가입일자"]),
-                    "almt_pymt_prca": int(pd.to_numeric(r["부담금납입원금"], errors="coerce") or 0),
-                    "utlz_pfls_amt": int(pd.to_numeric(r["운용손익금액"], errors="coerce") or 0),
-                    "evlu_acca_smtl_amt": int(pd.to_numeric(r["평가적립금합계금액"], errors="coerce") or 0),
-                }
+        # 첫 번째 DC 계좌 기준 상세
+        dc_rows = st.session_state.df_dc.copy() if st.session_state.df_dc is not None else pd.DataFrame()
+        if not dc_rows.empty:
+            # 첫 행을 대표로 사용
+            r = dc_rows.iloc[0]
+            dc = {
+                "ctrt_no": r["_ctrt_no"],
+                "odtp_name": r["근무처명"],
+                "etco_dt": str(r["입사일자"]),
+                "midl_excc_dt": str(r["중간정산일자"]) if pd.notna(r["중간정산일자"]) else None,
+                "sst_join_dt": str(r["제도가입일자"]),
+                "almt_pymt_prca": int(pd.to_numeric(r["부담금납입원금"], errors="coerce") or 0),
+                "utlz_pfls_amt": int(pd.to_numeric(r["운용손익금액"], errors="coerce") or 0),
+                "evlu_acca_smtl_amt": int(pd.to_numeric(r["평가적립금합계금액"], errors="coerce") or 0),
+            }
 
     return {"customer": cust, "accounts": accts, "dc_contract": dc}
 
@@ -421,49 +414,57 @@ st.session_state.df_dc = load_dc_contracts_from_db(st.session_state.get("selecte
 # ==================== Layout ====================
 left, midsep, right = st.columns([0.46, 0.02, 0.52])
 
-# -------- LEFT (고객/계좌) --------
+# -------- LEFT (고객/계좌/DC) --------
 with left:
     st.markdown('<div class="panel-soft flush-top">', unsafe_allow_html=True)
     st.subheader("고객/계좌 정보")
 
-    # (1) 고객명 검색 콤보 + 결과: 고객 그리드(좌) + 파이차트(우)
+    # (1) 고객명 검색 + 단건 요약 카드 + 파이차트
     st.caption("① 고객 검색 → 선택")
     all_names = st.session_state.df_cust["고객 이름"].dropna().astype(str).tolist()
-    default_idx = 0 if not all_names else 0
-    name_selected = st.selectbox("고객 이름 검색", options=[""] + sorted(all_names), index=default_idx, help="검색창에 일부만 입력해도 됩니다.")
+    name_selected = st.selectbox("고객 이름 검색", options=[""] + sorted(all_names), index=0,
+                                 help="검색창에 일부만 입력해도 됩니다.")
+
     if name_selected:
         filtered_cust = st.session_state.df_cust[st.session_state.df_cust["고객 이름"] == name_selected]
     else:
-        filtered_cust = st.session_state.df_cust.copy()
+        filtered_cust = st.session_state.df_cust.iloc[0:0]  # 선택 없을 때는 비표시
 
     colL, colR = st.columns([1, 1])
     with colL:
-        grid_cust = aggrid_table(
-            filtered_cust[["고객 번호","고객 이름","생년월일","연령대","_customer_id"]],
-            key=GRID_KEYS["cust"], selection_mode="single", height=240, enable_filter=True
-        )
-        sel_cust = grid_cust.get("selected_rows", None)
-        st.session_state.selected_customer = get_first_value_from_selection(sel_cust, "_customer_id")
-        # 콤보로 선택되었지만 그리드 선택이 없으면 첫 행 자동 선택처럼 동작
-        if not st.session_state.selected_customer and not filtered_cust.empty:
-            st.session_state.selected_customer = filtered_cust.iloc[0]["고객 번호"]
+        # 단건 요약(선택 시)
+        if not filtered_cust.empty:
+            r = filtered_cust.iloc[0]
+            st.markdown('<div class="kv">', unsafe_allow_html=True)
+            st.markdown(f'<div class="item"><span class="k">고객 번호</span>{r["고객 번호"]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="item"><span class="k">고객 이름</span>{r["고객 이름"]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="item"><span class="k">생년월일</span>{r["생년월일"]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="item"><span class="k">연령대</span>{r["연령대"]}</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+            # 내부 선택 상태 반영
+            st.session_state.selected_customer = r["_customer_id"]
+        else:
+            st.info("고객을 선택하세요.")
 
     with colR:
-        # 선택 고객 기준으로 계좌 합산 → 파이차트
-        if st.session_state.selected_customer:
-            acct_for_pie = load_accounts_from_db(st.session_state.selected_customer)
+        # 파이차트 (고객 선택 시만)
+        if not filtered_cust.empty:
+            acct_for_pie = load_accounts_from_db(filtered_cust.iloc[0]["고객 번호"])
+            if acct_for_pie.empty or pd.to_numeric(acct_for_pie["평가적립금"], errors="coerce").fillna(0).sum() == 0:
+                st.info("표시할 평가적립금이 없습니다.")
+            else:
+                tmp = acct_for_pie.copy()
+                tmp["평가적립금"] = pd.to_numeric(tmp["평가적립금"], errors="coerce").fillna(0)
+                grp = tmp.groupby("계좌 유형", dropna=False)["평가적립금"].sum().reset_index().sort_values("평가적립금", ascending=False)
+                fig = px.pie(grp, names="계좌 유형", values="평가적립금", hole=0.45)
+                # 공간 효율: 내부 라벨, 범례 숨김
+                fig.update_traces(textinfo="percent+label", textposition="inside",
+                                  hovertemplate="%{label}<br>%{value:,}원<br>%{percent}")
+                fig.update_layout(showlegend=False, margin=dict(l=0, r=0, t=0, b=0))
+                st.plotly_chart(fig)
         else:
-            acct_for_pie = pd.DataFrame(columns=["계좌 유형","평가적립금"])
-        if acct_for_pie.empty or pd.to_numeric(acct_for_pie["평가적립금"], errors="coerce").fillna(0).sum() == 0:
-            st.info("표시할 평가적립금이 없습니다.")
-        else:
-            tmp = acct_for_pie.copy()
-            tmp["평가적립금"] = pd.to_numeric(tmp["평가적립금"], errors="coerce").fillna(0)
-            grp = tmp.groupby("계좌 유형", dropna=False)["평가적립금"].sum().reset_index().sort_values("평가적립금", ascending=False)
-            fig = px.pie(grp, names="계좌 유형", values="평가적립금", hole=0.4)
-            fig.update_traces(textinfo="percent+label", textposition="inside", hovertemplate="%{label}<br>%{value:,}원<br>%{percent}")
-            fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), legend_title_text="계좌 유형")
-            st.plotly_chart(fig)
+            st.empty()
 
     st.markdown("---")
 
@@ -471,20 +472,39 @@ with left:
     st.caption("② 선택 고객의 모든 계좌")
     if st.session_state.selected_customer:
         st.session_state.df_acct = load_accounts_from_db(st.session_state.selected_customer)
+        df_acct = st.session_state.df_acct
+        grid_acct = aggrid_table(
+            df_acct[["계좌 번호","고객 번호","계좌 유형","상품코드","개설일자","평가적립금","_account_id","_customer_id"]],
+            key=GRID_KEYS["acct"], selection_mode="multiple", height=300, enable_filter=True
+        )
+        # 컨텍스트: 모든 계좌를 자동 반영
+        st.session_state.selected_accounts = df_acct["_account_id"].dropna().tolist()
     else:
-        st.session_state.df_acct = pd.DataFrame(columns=["계좌 번호","고객 번호","계좌 유형","상품코드","개설일자","평가적립금","_account_id","_customer_id"])
-    df_acct = st.session_state.df_acct
+        df_acct = pd.DataFrame(columns=["계좌 번호","고객 번호","계좌 유형","상품코드","개설일자","평가적립금","_account_id","_customer_id"])
+        st.info("고객 선택 시 계좌가 표시됩니다.")
+        st.session_state.selected_accounts = []
 
-    grid_acct = aggrid_table(
-        df_acct[["계좌 번호","고객 번호","계좌 유형","상품코드","개설일자","평가적립금","_account_id","_customer_id"]],
-        key=GRID_KEYS["acct"], selection_mode="multiple", height=300, enable_filter=True
-    )
-    # 모든 계좌를 기본 선택으로 컨텍스트에 반영 (요청: 전부 보여주기/사용)
-    st.session_state.selected_accounts = df_acct["_account_id"].dropna().tolist()
-
-    # DC 계약 캐시 갱신
-    acct_ids = st.session_state.selected_accounts or []
+    # (3) DC 계약 (선택 계좌 기준)
+    st.markdown("---")
+    st.caption("③ DC 계약 (계약번호=계좌번호 연결)")
+    acct_ids = st.session_state.get("selected_accounts", [])
     st.session_state.df_dc = load_dc_contracts_from_db(acct_ids if acct_ids else None)
+    df_dc = st.session_state.df_dc
+    if df_dc is not None and not df_dc.empty:
+        view_cols = ["계약번호","근무처명","입사일자","중간정산일자","제도가입일자","부담금납입원금","운용손익금액","평가적립금합계금액","_ctrt_no"]
+        use_cols = [c for c in view_cols if c in df_dc.columns]
+        grid_dc = aggrid_table(
+            df_dc[use_cols], key=GRID_KEYS["dc"], selection_mode="single", height=220, enable_filter=True
+        )
+    else:
+        st.info("표시할 DC 계약 데이터가 없습니다.")
+
+    # ---- 왼쪽 변경 → 컨텍스트 자동 동기화 ----
+    new_ctx = build_context_from_selection()
+    # 변경 감지(딕셔너리 비교): 같으면 갱신/rerun 안 함
+    if to_json_str(new_ctx) != to_json_str(st.session_state.get("context", {})):
+        st.session_state.context = new_ctx
+        st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -557,25 +577,19 @@ with right:
                 display_payload = koreanize_payload(payload_preview) if show_korean else payload_preview
                 st.json(display_payload)
             else:
-                # 편집은 내부 스키마(영문키)로만 지원
                 raw_str = st.text_area("편집(JSON, 영문 키)", value=to_json_str(payload_preview), height=260)
                 apply_col1, apply_col2 = st.columns([1, 3])
                 with apply_col1:
                     if st.button("적용", type="primary"):
                         try:
                             new_payload = json.loads(raw_str)
-                            # 최소 검증 및 세션 반영
                             if not isinstance(new_payload, dict):
                                 raise ValueError("payload는 object여야 합니다.")
                             params = new_payload.get("params", {})
                             context = new_payload.get("context", {})
                             if not isinstance(params, dict) or not isinstance(context, dict):
                                 raise ValueError("params/context는 object여야 합니다.")
-
-                            # sim_params 업데이트 (notes만 유지 허용)
                             st.session_state.sim_params = {"notes": params.get("notes", "")}
-
-                            # context 업데이트: 필수 구조만 추려서 반영
                             cust = context.get("customer")
                             accts = context.get("accounts", [])
                             dc = context.get("dc_contract")
@@ -585,7 +599,6 @@ with right:
                                 raise ValueError("context.accounts는 array여야 합니다.")
                             if dc is not None and not isinstance(dc, dict):
                                 raise ValueError("context.dc_contract는 object여야 합니다.")
-
                             st.session_state.context = {
                                 "customer": cust or None,
                                 "accounts": accts or [],
@@ -601,12 +614,10 @@ with right:
     st.divider()
 
     # ---------- 채팅 ----------
-    # 히스토리 렌더
     for msg in st.session_state.messages:
         role = "assistant" if msg["role"] == "assistant" else "user"
         st.chat_message(role).markdown(msg["content"])
 
-    # 큐 처리
     queued = st.session_state.pop("queued_user_input", None)
     queued_ctx = st.session_state.pop("queued_context", None)
     if queued:
@@ -622,7 +633,6 @@ with right:
             placeholder.markdown(streamed)
         st.session_state.messages.append({"role": "assistant", "content": streamed})
 
-    # 입력창은 항상 맨 아래
     st.markdown("---")
     user_input = st.chat_input("질문을 입력하세요. (예: 현재 컨텍스트 기반으로 DC 관련 규정 설명)")
     if user_input:
