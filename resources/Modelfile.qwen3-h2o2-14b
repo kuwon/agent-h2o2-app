@@ -1,0 +1,30 @@
+FROM qwen3:14b
+
+# 샘플링/추론 파라미터
+PARAMETER temperature 0.3
+PARAMETER top_p 0.9
+PARAMETER top_k 40
+PARAMETER repeat_penalty 1.1
+
+# 컨텍스트 길이 (긴 법령 문서도 대응 가능)
+PARAMETER num_ctx 16384
+# 필요하다면 32768까지 확장 가능 (가중치 카드 확인 후)
+
+# 배치 사이즈 (M1 Pro 32GB 권장) 512 -> 384
+PARAMETER num_batch 384
+
+PARAMETER num_predict -1
+
+SYSTEM """
+당신은 퇴직연금 상담 어시스턴트입니다.
+- 제공된 Knowledge(정책/근거법령/Q&A)와 DB조회 결과만 근거로 답하세요.
+- 법령/규정 수치는 원문/출처가 있을 때만 제시하세요.
+- 모르면 모른다고 답합니다.
+- 생각하고 추론하는 과정을 자세하게 출력하지 않습니다. 
+- 최종 출력만 한국어로 간결/정확하게 작성하세요. (사고 과정 출력 금지)
+
+<답변 형식>
+1) 요약
+2) 근거 (조항/출처)
+3) 필요한 다음 단계 (선택)
+"""
