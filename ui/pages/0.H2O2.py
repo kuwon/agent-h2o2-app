@@ -411,6 +411,123 @@ if "df_acct" not in st.session_state:
 st.session_state.df_dc = load_dc_contracts_from_db(st.session_state.get("selected_accounts") or None)
 
 
+def render_customer_profile_header(row: pd.Series):
+    # 이니셜(예: 홍길동 → '홍')
+    initials = str(row["고객 이름"])[0] if pd.notna(row["고객 이름"]) else "?"
+    c1, c2 = st.columns([1, 2], vertical_alignment="center")
+
+    with c1:
+        st.markdown(f"""
+        <div style="display:flex;align-items:center;justify-content:center;
+                    width:100%;height:120px;border-radius:12px;background:#f4f6f8;">
+          <div style="width:72px;height:72px;border-radius:50%;background:#222;color:#fff;
+                      display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700;">
+            {initials}
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c2:
+        st.markdown("""
+        <div style="border:1px solid #e9ecef;border-radius:12px;padding:10px 12px;">
+          <table style="width:100%;font-size:14px;border-collapse:collapse;">
+            <tr><td style="color:#6c757d;width:110px;">고객 번호</td><td><b>{cust_id}</b></td></tr>
+            <tr><td style="color:#6c757d;">고객 이름</td><td>{name}</td></tr>
+            <tr><td style="color:#6c757d;">생년월일</td><td>{birth}</td></tr>
+            <tr><td style="color:#6c757d;">연령대</td><td>{age_band}</td></tr>
+          </table>
+        </div>
+        """.format(
+            cust_id=row["고객 번호"],
+            name=row["고객 이름"],
+            birth=row["생년월일"],
+            age_band=row["연령대"],
+        ), unsafe_allow_html=True)
+
+
+def render_customer_kpis(row: pd.Series, acct_df: pd.DataFrame, dc_df: pd.DataFrame):
+    total_accounts = len(acct_df) if acct_df is not None else 0
+    total_balance = pd.to_numeric(acct_df["평가적립금"], errors="coerce").fillna(0).sum() if total_accounts else 0
+    dc_count = len(dc_df) if (dc_df is not None and not dc_df.empty) else 0
+    dc_total = pd.to_numeric(dc_df["평가적립금합계금액"], errors="coerce").fillna(0).sum() if dc_count else 0
+
+    st.markdown(f"**{row['고객 이름']}**님의 요약 지표")
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("보유 계좌 수", f"{total_accounts:,}")
+    k2.metric("총 평가적립금", f"{int(total_balance):,} 원")
+    k3.metric("DC 계약 수", f"{dc_count:,}")
+    k4.metric("DC 평가합계", f"{int(dc_total):,} 원")
+
+
+def render_customer_timeline_and_badges(row: pd.Series, acct_df: pd.DataFrame, dc_df: pd.DataFrame):
+    # 배지: 연령대 + 보유 계좌유형
+    acct_types = sorted(set(acct_df["계좌 유형"])) if (acct_df is not None and not acct_df.empty) else []
+    badges = " ".join([f"<span style='background:#eef2ff;color:#3b5bdb;padding:4px 8px;border-radius:999px;font-size:12px;margin-right:6px;'>{t}</span>"
+                       for t in acct_types])
+
+    st.markdown(f"### {row['고객 이름']}")
+    st.markdown(f"<div style='margin:6px 0 10px 0;'>"
+                f"<span style='background:#e8f5e9;color:#2e7d32;padding:4px 8px;border-radius:999px;font-size:12px;margin-right:6px;'>{row['연령대']}</span>"
+                f"{badges}"
+                f"</div>", unsafe_allow_html=True)
+
+    # 타임라인 (DC 첫 건 기준)
+    if dc_df is not None and not dc_df.empty:
+        dcr = dc_df.iloc[0]
+        def fmt(d): 
+            return (str(d) if pd.notna(d) else "—")
+        st.markdown("""
+        <div style="padding:8px 12px;border:1px solid #e9ecef;border-radius:12px;">
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div>🟢 <b>입사일</b> — {etco}</div>
+            <div>🔵 <b>제도가입일</b> — {join}</div>
+            <div>🟠 <b>중간정산일</b> — {midl}</div>
+          </div>
+        </div>
+        """.format(
+            etco=fmt(dcr.get("입사일자")), 
+            join=fmt(dcr.get("제도가입일자")),
+            midl=fmt(dcr.get("중간정산일자")),
+        ), unsafe_allow_html=True)
+    else:
+        st.info("DC 계약 이력(타임라인)을 표시할 데이터가 없습니다.")
+
+"""
+option A:
+if not filtered_cust.empty:
+    r = filtered_cust.iloc[0]
+    st.session_state.selected_customer = r["_customer_id"]
+    render_customer_profile_header(r)
+else:
+    st.info("고객을 선택하세요.")
+
+
+option B:
+if not filtered_cust.empty:
+    r = filtered_cust.iloc[0]
+    st.session_state.selected_customer = r["_customer_id"]
+    # 선택 고객의 계좌/계약 데이터 준비
+    acct_for_selected = load_accounts_from_db(r["고객 번호"])
+    dc_for_selected = load_dc_contracts_from_db(acct_for_selected["_account_id"].tolist() if not acct_for_selected.empty else [])
+    render_customer_kpis(r, acct_for_selected, dc_for_selected)
+else:
+    st.info("고객을 선택하세요.")
+
+
+option C:
+if not filtered_cust.empty:
+    r = filtered_cust.iloc[0]
+    st.session_state.selected_customer = r["_customer_id"]
+    acct_for_selected = load_accounts_from_db(r["고객 번호"])
+    dc_for_selected = load_dc_contracts_from_db(acct_for_selected["_account_id"].tolist() if not acct_for_selected.empty else [])
+    render_customer_timeline_and_badges(r, acct_for_selected, dc_for_selected)
+else:
+    st.info("고객을 선택하세요.")
+
+
+"""
+
+
 # ==================== Layout ====================
 left, midsep, right = st.columns([0.46, 0.02, 0.52])
 
