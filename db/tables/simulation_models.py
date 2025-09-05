@@ -18,8 +18,8 @@ class CustomersTable(Base):
     __table_args__ = {'schema': 'ai'}
 
     # CSNO
-    customer_id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, autoincrement=False, nullable=False, index=True,
+    customer_id: Mapped[Optional[str]] = mapped_column(
+        String(9), primary_key=True, autoincrement=False, nullable=False, index=True,
         comment="고객번호: Customer ID"
     )
     # CUST_NAME
@@ -59,13 +59,13 @@ class AccountsTable(Base):
     )
 
     # CANO
-    account_id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, autoincrement=False, nullable=False, index=True,
+    account_id: Mapped[Optional[str]] = mapped_column(
+        String(8), primary_key=True, autoincrement=False, nullable=False, index=True,
         comment="계좌번호: Account ID"
     )
     # CSNO
-    customer_id: Mapped[int] = mapped_column(
-        BigInteger, nullable=False, index=True, comment="고객번호: Customer ID"
+    customer_id: Mapped[Optional[str]] = mapped_column(
+        String(9), nullable=False, index=True, comment="고객번호: Customer ID"
     )
 
     # ACNT_TYPE
