@@ -103,7 +103,7 @@ async def body() -> None:
             "sim_params": ctx.sim_params,
         })
         st.divider()
-        render_chat_pane(team)
+        await render_chat_pane(team)
 
 
 async def main():

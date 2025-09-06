@@ -1,13 +1,10 @@
 from textwrap import dedent
 from typing import Optional
 
-from agno.agent import Agent, AgentKnowledge
+from agno.agent import Agent
 from agno.models.openai import OpenAIChat
-from agno.models.ollama import Ollama 
-from agno.embedder.ollama import OllamaEmbedder
 from agno.storage.agent.postgres import PostgresAgentStorage
 from agno.tools.postgres import PostgresTools
-from agno.vectordb.pgvector import PgVector, SearchType
 
 from agents.settings import agent_settings
 from db.session import db_url
@@ -20,62 +17,39 @@ def get_pension_account(
     session_id: Optional[str] = None,
     debug_mode: bool = True,
 ) -> Agent:
-    additional_context = ""
-    if user_id:
-        additional_context += "<context>"
-        additional_context += f"You are interacting with the user: {user_id}"
-        additional_context += "</context>"
-
     model_id = model_id or agent_settings.openai_economy
 
-    pension_agent = Agent(
+    return Agent(
         name="Pension Account",
         agent_id="pension_account",
         user_id=user_id,
         session_id=session_id,
-        # model=Ollama(
-        #     id=agent_settings.qwen
-        #     , #host=agent_settings.local_ollama_host)
-        # ),
         model=OpenAIChat(
-           id=model_id,
-           max_completion_tokens=agent_settings.default_max_completion_tokens,
-           temperature=agent_settings.default_temperature if model_id != "o3-mini" else None,
+            id=model_id,
+            max_completion_tokens=agent_settings.default_max_completion_tokens,
+            temperature=agent_settings.default_temperature if model_id != "o3-mini" else None,
         ),
-        # Tools available to the agent
-        #tools=[DuckDuckGoTools()],
         tools=[PostgresTools(**db_settings.get_db_info())],
-        # Storage for the agent
         storage=PostgresAgentStorage(table_name="pension_account_sessions", db_url=db_url),
-        # Description of the agent
-        description=dedent(f"""\
-            고객, 계좌 관련된 테이블에서 사용자 질의에 필요한 정보들을 뽑아줌\
+        description=dedent("""\
+            고객/계좌 관련 DB 정보를 기반으로 질의에 응답한다.
         """),
-        # Instructions for the agent
         instructions=dedent("""\
-            Respond to the user by following the steps below:
-            1. 아래 정보를 가지고 DB에서 필요한 내용을 제공.
-            - kis_customers: 고객 정보:  customer_id가 
-            - kis_accounts: 계좌 정보: kis_customers와는 customer_id를 foreign_key로 엮여있음
+            # 컨텍스트 활용
+            - 호출 시 전달되는 context에 customer_id, account_id, accounts, dc_contracts 등이 포함될 수 있다.
+            - 단순 조회/요약 요청이면 **context에 있는 데이터만으로 우선 답하라** (예: 개요 표, 합계/요약, 최근 n개 항목).
+            - context에 정보가 부족할 때만 PostgresTools로 DB 질의를 수행하라.
+            - 계좌번호 등 PII는 마스킹하라.
 
-            2. Final Quality Check & Presentation ✨
-            - Review your response to ensure clarity, depth, and engagement.
-            - Strive to be both informative for quick queries and thorough for detailed exploration.
-            - Result Lnaguage should be Korean if query looks like Korean.
-
-            3. In case of any uncertainties, clarify limitations and encourage follow-up queries.\
+            # 응답 형식
+            - 한국어로 간결하게 설명 + 필요한 경우 표/목록.
+            - 수치에는 단위/기준일(as-of)을 함께 명시.
         """),
-        additional_context=additional_context,
-        # Format responses using markdown
         markdown=True,
-        # Add the current date and time to the instructions
         add_datetime_to_instructions=True,
-        # Send the last 3 messages from the chat history
         add_history_to_messages=True,
         num_history_responses=3,
-        # Add a tool to read the chat history if needed
         read_chat_history=True,
-        # Show debug logs
+        show_tool_calls=False,
         debug_mode=debug_mode,
     )
-    return pension_agent

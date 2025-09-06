@@ -1,31 +1,27 @@
+# 변경점 요약:
+# - Enum 제거 → Literal 사용
+# - Field(description=...) 모두 제거
+# - response_model 그대로 유지
+
 from textwrap import dedent
-from typing import Optional
+from typing import Optional, Literal
+from pydantic import BaseModel
 
-from enum import Enum
-from pydantic import BaseModel, Field
-
-from agno.agent import Agent, AgentKnowledge
+from agno.agent import Agent
 from agno.models.openai import OpenAIChat
-from agno.models.ollama import Ollama 
-from agno.embedder.ollama import OllamaEmbedder
 from agno.storage.agent.postgres import PostgresAgentStorage
-from agno.vectordb.pgvector import PgVector, SearchType
 
 from agents.settings import agent_settings
 from db.session import db_url
 
 
-class IntentLabel(str, Enum):
-    account = "account" # 고객 개인 계좌/납입/전환 등
-    policy = "policy" # 법령/정책/FAQ
-    general = "general" # 일반 설명/소프트 질문
-
-
+# 👇 Enum 대신 Literal
 class IntentResult(BaseModel):
-    intent: IntentLabel = Field(..., description="user 질문의 1차 의도")
-    customer_id: Optional[int] = Field(None, description="고객 관련일 때 customer_id")
-    account_id: Optional[int] = Field(None, description="계좌 관련일 때 account_id")
-    topic: Optional[str] = Field(None, description="정책/FAQ 주요 토픽 키워드")
+    intent: Literal["account", "policy", "general"]
+    customer_id: Optional[int] = None
+    account_id: Optional[int]  = None
+    topic: Optional[str]       = None
+
 
 def get_intent(
     model_id: Optional[str] = None,
@@ -33,58 +29,34 @@ def get_intent(
     session_id: Optional[str] = None,
     debug_mode: bool = True,
 ) -> Agent:
-    additional_context = ""
-    if user_id:
-        additional_context += "<context>"
-        additional_context += f"You are interacting with the user: {user_id}"
-        additional_context += "</context>"
-
     model_id = model_id or agent_settings.openai_economy
 
-    intent_agent = Agent(
+    return Agent(
         name="Intent",
         agent_id="intent",
         user_id=user_id,
         session_id=session_id,
-        # model=Ollama(
-        #     id=agent_settings.qwen
-        #     , #host=agent_settings.local_ollama_host)
-        # ),
         model=OpenAIChat(
-           id=model_id,
-           max_completion_tokens=agent_settings.default_max_completion_tokens,
-           temperature=agent_settings.default_temperature if model_id != "o3-mini" else None,
+            id=model_id,
+            max_completion_tokens=agent_settings.default_max_completion_tokens,
+            temperature=agent_settings.default_temperature if model_id != "o3-mini" else None,
         ),
-        # Tools available to the agent
         tools=[],
-        # Storage for the agent
         storage=PostgresAgentStorage(table_name="intent_sessions", db_url=db_url),
-        
-        # Description of the agent
-        description=dedent(f"""\
-            대화의 의도를 분류. 기본적으로는 퇴직연금에 대한 질의 응답을 하고, 유형을 파악하여 계좌 관련 agent나 정책 관련 agent를 활용하기 위해 사용자의 질문에서 의도를 분류\
+        description=dedent("""\
+            대화의 의도를 분류해 계좌(agent:pension_account) 또는 정책(agent:pension_policy)로 라우팅하기 위한 전처리기.
         """),
-        # Instructions for the agent
         instructions=dedent("""\
             너는 퇴직연금 도메인의 라우팅 분류기다.
-            - 고객 개인 정보/계좌/납입/전환/수익률 문의 -> account
-            - 법령/정책/세제/제도/FAQ -> policy
+            - 고객 개인 정보/계좌/납입/전환/수익률/내역 문의 -> account
+            - 법령/정책/세제/제도/FAQ, 규정 적용/자격판정/금액계산 -> policy
             - 그 외 일반 설명/상담/스몰토크 -> general
-            가능하면 customer_id, accountid, 정책 topic을 추출해라.
-            숫자가 아닌 고객번호는 None으로 둔다.
-            이후에 활용하기 편하도록 json 형태로 결과를 생성해야한다.\
+            가능하면 customer_id, account_id, 정책 topic을 추출하라.
+            반드시 JSON으로만 응답한다.
         """),
-        response_model=IntentResult,
-        # Format responses using markdown
-        markdown=True,
-        # Add the current date and time to the instructions
+        response_model=IntentResult,   # ✅ 구조화 출력 유지
+        markdown=False,
         add_datetime_to_instructions=True,
-        # Send the last 3 messages from the chat history
-        #add_history_to_messages=True,
-        #num_history_responses=3,
-        # Add a tool to read the chat history if needed
-        #read_chat_history=True,
-        # Show debug logs
+        show_tool_calls=False,
         debug_mode=debug_mode,
     )
-    return intent_agent

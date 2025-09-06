@@ -110,18 +110,35 @@ def mask_thoughts(text: str, notice_inserted: bool) -> Tuple[str, bool]:
     return t, notice_inserted
 
 
+def ensure_message_bucket(agent_name: str) -> None:
+    """세션 상태에 전역/에이전트별 메시지 버킷을 보장합니다."""
+    # 전역 메시지: 채팅 기록(좌측/우측 공통)
+    if "messages" not in st.session_state or st.session_state["messages"] is None:
+        st.session_state["messages"] = []
+
+    # 에이전트별 버킷
+    if agent_name not in st.session_state or st.session_state[agent_name] is None:
+        st.session_state[agent_name] = {}
+    if "messages" not in st.session_state[agent_name] or st.session_state[agent_name]["messages"] is None:
+        st.session_state[agent_name]["messages"] = []
+
+
 async def add_message(
     agent_name: str,
     role: str,
     content: str,
-    tool_calls: Optional[Union[List[Dict[str, Any]], List[ToolExecution]]] = None,
+    tool_calls: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
-    """Safely add a message to the Agent's session state."""
-    # if role == "user":
-    #     logger.info(f"👤  {role} → {agent_name}: {content}")
-    # else:
-    #     logger.info(f"🤖  {agent_name} → user: {content}")
-    st.session_state[agent_name]["messages"].append({"role": role, "content": content, "tool_calls": tool_calls})
+    """전역 및 에이전트별 메시지 버킷에 동시에 기록합니다."""
+    ensure_message_bucket(agent_name)
+    record = {"role": role, "content": content}
+    if tool_calls is not None:
+        record["tool_calls"] = tool_calls
+
+    # 전역
+    st.session_state["messages"].append(record)
+    # 에이전트별
+    st.session_state[agent_name]["messages"].append(record)
 
 
 def display_tool_calls(tool_calls_container, tools):
