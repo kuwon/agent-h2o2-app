@@ -110,7 +110,7 @@ async def main():
     await initialize_team_session_state(team_name)
     await header()
     await body()
-    await about_agno()
+    #await about_agno()
 
 
 if __name__ == "__main__":
