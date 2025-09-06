@@ -1,17 +1,19 @@
 from pydantic_settings import BaseSettings
-
+from workspace.utils.model_providers import CHAT_MODELS, EMBEDDING_MODELS
 
 class AgentSettings(BaseSettings):
     """Agent settings that can be set using environment variables.
     Reference: https://pydantic-docs.helpmanual.io/usage/settings/
     """
 
-    gpt_4_mini: str = "gpt-4o-mini"
-    gpt_4: str = "gpt-4o"
-    embedding_model: str = "text-embedding-3-small"
+    openai_economy: str = CHAT_MODELS.get('gpt-economy').get("model_id")
+    openai_latest: str = CHAT_MODELS.get('gpt-latest').get("model_id")
+    openai_embedding_model: str = EMBEDDING_MODELS.get('gpt-emb').get("model_id")
 
-    qwen: str = "qwen3:30b"
-    open_embedding_model: str = "openhermes"
+    ollama_compact: str = CHAT_MODELS.get('qwen3-compact').get("model_id")
+    ollama_mid: str = CHAT_MODELS.get('qwen3-mid').get("model_id")
+    ollama_embedding_model: str = EMBEDDING_MODELS.get('qwen-emb').get("model_id")
+
     local_ollama_host: str = "host.docker.internal:11434"
 
     default_max_completion_tokens: int = 16000

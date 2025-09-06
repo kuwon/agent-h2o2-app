@@ -39,22 +39,22 @@ def get_intent(
         additional_context += f"You are interacting with the user: {user_id}"
         additional_context += "</context>"
 
-    model_id = model_id or agent_settings.qwen
+    model_id = model_id or agent_settings.openai_economy
 
     intent_agent = Agent(
         name="Intent",
         agent_id="intent",
         user_id=user_id,
         session_id=session_id,
-        model=Ollama(
-            id=agent_settings.qwen
-            , #host=agent_settings.local_ollama_host)
+        # model=Ollama(
+        #     id=agent_settings.qwen
+        #     , #host=agent_settings.local_ollama_host)
+        # ),
+        model=OpenAIChat(
+           id=model_id,
+           max_completion_tokens=agent_settings.default_max_completion_tokens,
+           temperature=agent_settings.default_temperature if model_id != "o3-mini" else None,
         ),
-        #model=OpenAIChat(
-        #    id=model_id,
-        #    max_completion_tokens=agent_settings.default_max_completion_tokens,
-        #    temperature=agent_settings.default_temperature if model_id != "o3-mini" else None,
-        #),
         # Tools available to the agent
         tools=[],
         # Storage for the agent

@@ -5,8 +5,8 @@ from agno.agent import Agent, AgentKnowledge
 from agno.models.openai import OpenAIChat
 from agno.models.ollama import Ollama 
 from agno.embedder.ollama import OllamaEmbedder
+from agno.embedder.openai import OpenAIEmbedder
 from agno.storage.agent.postgres import PostgresAgentStorage
-from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.vectordb.pgvector import PgVector, SearchType
 
 from agents.settings import agent_settings
@@ -25,36 +25,44 @@ def get_pension_policy(
         additional_context += f"You are interacting with the user: {user_id}"
         additional_context += "</context>"
 
-    model_id = model_id or agent_settings.gpt_4_mini
+    model_id = model_id or agent_settings.openai_economy
 
     pension_agent = Agent(
         name="Pension Policy",
         agent_id="pension_policy",
         user_id=user_id,
         session_id=session_id,
-        model=Ollama(
-            id=agent_settings.qwen
-            , #host=agent_settings.local_ollama_host)
+        # model=Ollama(
+        #     id=agent_settings.qwen
+        #     , #host=agent_settings.local_ollama_host)
+        # ),
+        model=OpenAIChat(
+           id=model_id,
+           max_completion_tokens=agent_settings.default_max_completion_tokens,
+           temperature=agent_settings.default_temperature if model_id != "o3-mini" else None,
         ),
-        #model=OpenAIChat(
-        #    id=model_id,
-        #    max_completion_tokens=agent_settings.default_max_completion_tokens,
-        #    temperature=agent_settings.default_temperature if model_id != "o3-mini" else None,
-        #),
         # Tools available to the agent
         #tools=[DuckDuckGoTools()],
         tools=[],
         # Storage for the agent
         storage=PostgresAgentStorage(table_name="pension_sessions", db_url=db_url),
         # Knowledge base for the agent
+        ## TODO: select by model_id
+        # knowledge=AgentKnowledge(
+        #     vector_db=PgVector(
+        #         table_name="pension_knowledge"
+        #         , db_url=db_url
+        #         , embedder=OllamaEmbedder(id=agent_settings.open_embedding_model)
+        #         ,search_type=SearchType.hybrid
+        #     ) 
+               
+        # ),
         knowledge=AgentKnowledge(
             vector_db=PgVector(
-                table_name="pension_knowledge"
-                , db_url=db_url
-                , embedder=OllamaEmbedder(id=agent_settings.open_embedding_model)
-                ,search_type=SearchType.hybrid
-            ) 
-               
+                table_name="kis_pension_knowledge_openai",
+                db_url=db_url,
+                embedder=OpenAIEmbedder(),
+            )
         ),
         # Description of the agent
         description=dedent(f"""\

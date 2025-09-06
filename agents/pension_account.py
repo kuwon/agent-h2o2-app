@@ -7,7 +7,6 @@ from agno.models.ollama import Ollama
 from agno.embedder.ollama import OllamaEmbedder
 from agno.storage.agent.postgres import PostgresAgentStorage
 from agno.tools.postgres import PostgresTools
-from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.vectordb.pgvector import PgVector, SearchType
 
 from agents.settings import agent_settings
@@ -27,22 +26,22 @@ def get_pension_account(
         additional_context += f"You are interacting with the user: {user_id}"
         additional_context += "</context>"
 
-    model_id = model_id or agent_settings.gpt_4_mini
+    model_id = model_id or agent_settings.openai_economy
 
     pension_agent = Agent(
         name="Pension Account",
         agent_id="pension_account",
         user_id=user_id,
         session_id=session_id,
-        model=Ollama(
-            id=agent_settings.qwen
-            , #host=agent_settings.local_ollama_host)
+        # model=Ollama(
+        #     id=agent_settings.qwen
+        #     , #host=agent_settings.local_ollama_host)
+        # ),
+        model=OpenAIChat(
+           id=model_id,
+           max_completion_tokens=agent_settings.default_max_completion_tokens,
+           temperature=agent_settings.default_temperature if model_id != "o3-mini" else None,
         ),
-        #model=OpenAIChat(
-        #    id=model_id,
-        #    max_completion_tokens=agent_settings.default_max_completion_tokens,
-        #    temperature=agent_settings.default_temperature if model_id != "o3-mini" else None,
-        #),
         # Tools available to the agent
         #tools=[DuckDuckGoTools()],
         tools=[PostgresTools(**db_settings.get_db_info())],

@@ -8,6 +8,8 @@ from agno.utils.log import logger
 
 from teams.pension_master import get_pension_master_team
 from ui.css import CUSTOM_CSS
+from ui.chat import render_chat_pane
+from ui.panes import render_left_pane
 from ui.utils import (
     about_agno,
     add_message,
@@ -16,6 +18,8 @@ from ui.utils import (
     initialize_team_session_state,
     selected_model,
 )
+from ui.state import PensionContext,SESSION_DEFAULTS
+from ui.utils import inject_global_styles, ensure_session_defaults
 
 nest_asyncio.apply()
 
@@ -35,32 +39,41 @@ async def header():
         unsafe_allow_html=True,
     )
 
-
 async def body() -> None:
     ####################################################################
     # Initialize User and Session State
     ####################################################################
-    user_id = st.sidebar.text_input(":technologist: Username", value="김한투")
+    user_id = "h2o2"
 
     ####################################################################
     # Model selector
     ####################################################################
-    model_id = await selected_model()
+    model_provider = await selected_model()
+
+    ####################################################################
+    # Initialize Style
+    ####################################################################
+
+    inject_global_styles()
+    ensure_session_defaults(SESSION_DEFAULTS)
 
     ####################################################################
     # Initialize Team
     ####################################################################
+
     team: Team
     if (
         team_name not in st.session_state
         or st.session_state[team_name]["team"] is None
-        or st.session_state.get("selected_model") != model_id
+        or st.session_state.get("selected_model") != model_provider.get('model_id')
     ):
         logger.info("---*--- Creating Team ---*---")
-        team = get_pension_master_team(user_id=user_id, model_id=model_id)
-        st.session_state["selected_model"] = model_id
+        team = get_pension_master_team(user_id=user_id, model_id=model_provider.get('model_id'))
+        st.session_state["selected_model"] = model_provider.get('model_id')
     else:
         team = st.session_state[team_name]["team"]
+
+    st.session_state["agent_cfg"] = {"provider": model_provider.get('provider'), "model": model_provider.get('model_id')}
 
     ####################################################################
     # Load Team Session from the database
@@ -72,74 +85,25 @@ async def body() -> None:
         return
 
     ####################################################################
-    # Get user input
+    # Main
     ####################################################################
-    if prompt := st.chat_input("✨ How can I help, kis?"):
-        await add_message(team_name, "user", prompt)
-
-    ####################################################################
-    # Show example inputs
-    ####################################################################
-    await example_inputs(team_name)
-
-    ####################################################################
-    # Display agent messages
-    ####################################################################
-    for message in st.session_state[team_name]["messages"]:
-        if message["role"] in ["user", "assistant"]:
-            _content = message["content"]
-            if _content is not None:
-                with st.chat_message(message["role"]):
-                    # Display tool calls if they exist in the message
-                    if "tool_calls" in message and message["tool_calls"]:
-                        display_tool_calls(st.empty(), message["tool_calls"])
-                    st.markdown(_content)
-
-    ####################################################################
-    # Generate response for user message
-    ####################################################################
-    last_message = st.session_state[team_name]["messages"][-1] if st.session_state[team_name]["messages"] else None
-    if last_message and last_message.get("role") == "user":
-        user_message = last_message["content"]
-        logger.info(f"Responding to message: {user_message}")
-        with st.chat_message("assistant"):
-            # Create container for tool calls
-            tool_calls_container = st.empty()
-            resp_container = st.empty()
-            with st.spinner(":thinking_face: Thinking..."):
-                response = ""
-                try:
-                    # Run the team and stream the response
-                    run_response = await team.arun(user_message, stream=True)
-                    async for resp_chunk in run_response:
-                        # 도구 호출 이벤트 처리
-                        if hasattr(resp_chunk, "tools") and resp_chunk.tools:
-                            display_tool_calls(tool_calls_container, resp_chunk.tools)
-
-                        # 일반 텍스트 응답 처리
-                        if hasattr(resp_chunk, "content") and resp_chunk.content is not None:
-                            response += resp_chunk.content
-                            resp_container.markdown(response)
-
-                        # # Display tool calls if available
-                        # if resp_chunk.tools and len(resp_chunk.tools) > 0:
-                        #     display_tool_calls(tool_calls_container, resp_chunk.tools)
-
-                        # # Display response
-                        # if resp_chunk.content is not None:
-                        #     response += resp_chunk.content
-                        #     resp_container.markdown(response)
-
-                    # Add the response to the messages
-                    if team.run_response is not None:
-                        await add_message(team_name, "assistant", response, team.run_response.tools)
-                    else:
-                        await add_message(team_name, "assistant", response)
-                except Exception as e:
-                    logger.error(f"Error during team run: {str(e)}", exc_info=True)
-                    error_message = f"Sorry, I encountered an error: {str(e)}"
-                    await add_message(team_name, "assistant", error_message)
-                    st.error(error_message)
+    left, gap, right = st.columns([0.48, 0.02, 0.50], gap="small")
+    with left:
+        render_left_pane(st.session_state.get("left_view", "info"))
+    with gap:
+        st.markdown('<div class="v-sep"></div>', unsafe_allow_html=True)
+    with right:
+        st.subheader("챗봇 · 컨텍스트 · 실행")
+        # 간단 컨텍스트 미리보기
+        ctx: PensionContext = st.session_state["context"]
+        st.json({
+            "customer_id": ctx.customer_id,
+            "accounts_preview": ctx.accounts[:2],
+            "dc_contracts_preview": ctx.dc_contracts[:2],
+            "sim_params": ctx.sim_params,
+        })
+        st.divider()
+        render_chat_pane(team)
 
 
 async def main():

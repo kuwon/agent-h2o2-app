@@ -7,18 +7,12 @@ from agno.models.ollama import Ollama
 from agno.embedder.ollama import OllamaEmbedder
 from agno.storage.postgres import PostgresStorage
 from agno.team.team import Team
-from agno.tools.duckduckgo import DuckDuckGoTools
-from agno.tools.yfinance import YFinanceTools
-
-from agno.knowledge.url import UrlKnowledge
-from agno.tools.knowledge import KnowledgeTools
-from agno.vectordb.pgvector import PgVector, SearchType
 
 from db.session import db_url
 from teams.settings import team_settings
 
 from agents.settings import agent_settings
-from agents.intent import get_intent
+from agents.intent_agent import get_intent
 from agents.pension_account import get_pension_account
 from agents.pension_policy import get_pension_policy
 
@@ -28,7 +22,7 @@ def get_pension_master_team(
     session_id: Optional[str] = None,
     debug_mode: bool = True,
 ):
-    model_id = model_id or team_settings.qwen
+    model_id = model_id or team_settings.openai_economy
 
     return Team(
         name="Pension Master Team",
@@ -49,7 +43,8 @@ def get_pension_master_team(
                            The team answers retirement-pension queries only using the Policy KB and the account/transaction DB. 
                            No speculation or unsupported completions. 
                            If evidence is insufficient, explicitly say so and request further verification."""),
-        model=Ollama(id=agent_settings.qwen),
+        #model=Ollama(id=agent_settings.qwen),
+        model=OpenAIChat(id=model_id),
         success_criteria="A good and simple answer",
         enable_agentic_context=True,
         expected_output="A good counseller for pension",

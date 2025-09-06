@@ -2,7 +2,7 @@ from enum import Enum
 from typing import List, Optional
 
 from agents.pension_policy import get_pension_policy
-from agents.intent import get_intent
+from agents.intent_agent import get_intent
 
 
 class AgentType(Enum):

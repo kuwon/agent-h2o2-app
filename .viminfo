@@ -12,7 +12,7 @@
 ~h
 # Command Line History (newest to oldest):
 :q!
-|2,0,1755967818,,"q!"
+|2,0,1757126801,,"q!"
 
 # Search String History (newest to oldest):
 
@@ -25,22 +25,36 @@
 # Registers:
 
 # File marks:
-'0  1  0  /usr/local/lib/python3.12/site-packages/agno/tools/postgres.py
-|4,48,1,0,1755967818,"/usr/local/lib/python3.12/site-packages/agno/tools/postgres.py"
-'1  72  0  /usr/local/lib/python3.12/site-packages/agno/tools/postgres.py
-|4,49,72,0,1755967627,"/usr/local/lib/python3.12/site-packages/agno/tools/postgres.py"
+'0  12  0  ~/Dockerfile
+|4,48,12,0,1757126801,"~/Dockerfile"
+'1  1  0  /usr/local/lib/python3.12/site-packages/agno/tools/postgres.py
+|4,49,1,0,1755967818,"/usr/local/lib/python3.12/site-packages/agno/tools/postgres.py"
 '2  72  0  /usr/local/lib/python3.12/site-packages/agno/tools/postgres.py
 |4,50,72,0,1755967627,"/usr/local/lib/python3.12/site-packages/agno/tools/postgres.py"
-'3  1  0  /usr/local/lib/python3.12/site-packages/agno/__init__.py
-|4,51,1,0,1755967586,"/usr/local/lib/python3.12/site-packages/agno/__init__.py"
+'3  72  0  /usr/local/lib/python3.12/site-packages/agno/tools/postgres.py
+|4,51,72,0,1755967627,"/usr/local/lib/python3.12/site-packages/agno/tools/postgres.py"
+'4  1  0  /usr/local/lib/python3.12/site-packages/agno/__init__.py
+|4,52,1,0,1755967586,"/usr/local/lib/python3.12/site-packages/agno/__init__.py"
 
 # Jumplist (newest first):
+-'  12  0  ~/Dockerfile
+|4,39,12,0,1757126801,"~/Dockerfile"
+-'  1  0  ~/Dockerfile
+|4,39,1,0,1757126792,"~/Dockerfile"
+-'  1  0  /usr/local/lib/python3.12/site-packages/agno/tools/postgres.py
+|4,39,1,0,1755967818,"/usr/local/lib/python3.12/site-packages/agno/tools/postgres.py"
 -'  1  0  /usr/local/lib/python3.12/site-packages/agno/tools/postgres.py
 |4,39,1,0,1755967818,"/usr/local/lib/python3.12/site-packages/agno/tools/postgres.py"
 -'  72  0  /usr/local/lib/python3.12/site-packages/agno/tools/postgres.py
 |4,39,72,0,1755967815,"/usr/local/lib/python3.12/site-packages/agno/tools/postgres.py"
 -'  72  0  /usr/local/lib/python3.12/site-packages/agno/tools/postgres.py
+|4,39,72,0,1755967815,"/usr/local/lib/python3.12/site-packages/agno/tools/postgres.py"
+-'  72  0  /usr/local/lib/python3.12/site-packages/agno/tools/postgres.py
 |4,39,72,0,1755967627,"/usr/local/lib/python3.12/site-packages/agno/tools/postgres.py"
+-'  72  0  /usr/local/lib/python3.12/site-packages/agno/tools/postgres.py
+|4,39,72,0,1755967627,"/usr/local/lib/python3.12/site-packages/agno/tools/postgres.py"
+-'  1  0  /usr/local/lib/python3.12/site-packages/agno/tools/postgres.py
+|4,39,1,0,1755967609,"/usr/local/lib/python3.12/site-packages/agno/tools/postgres.py"
 -'  1  0  /usr/local/lib/python3.12/site-packages/agno/tools/postgres.py
 |4,39,1,0,1755967609,"/usr/local/lib/python3.12/site-packages/agno/tools/postgres.py"
 -'  1  0  /usr/local/lib/python3.12/site-packages/agno/__init__.py
@@ -51,8 +65,20 @@
 |4,39,1,0,1755967586,"/usr/local/lib/python3.12/site-packages/agno/__init__.py"
 -'  1  0  /usr/local/lib/python3.12/site-packages/agno/__init__.py
 |4,39,1,0,1755967586,"/usr/local/lib/python3.12/site-packages/agno/__init__.py"
+-'  1  0  /usr/local/lib/python3.12/site-packages/agno/__init__.py
+|4,39,1,0,1755967586,"/usr/local/lib/python3.12/site-packages/agno/__init__.py"
+-'  1  0  /usr/local/lib/python3.12/site-packages/agno/__init__.py
+|4,39,1,0,1755967586,"/usr/local/lib/python3.12/site-packages/agno/__init__.py"
+-'  1  0  /usr/local/lib/python3.12/site-packages/agno/__init__.py
+|4,39,1,0,1755967586,"/usr/local/lib/python3.12/site-packages/agno/__init__.py"
+-'  1  0  /usr/local/lib/python3.12/site-packages/agno/__init__.py
+|4,39,1,0,1755967586,"/usr/local/lib/python3.12/site-packages/agno/__init__.py"
 
 # History of marks within files (newest to oldest):
+
+> ~/Dockerfile
+	*	1757126800	0
+	"	12	0
 
 > /usr/local/lib/python3.12/site-packages/agno/tools/postgres.py
 	*	1755967815	0

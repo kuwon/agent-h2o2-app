@@ -1,5 +1,6 @@
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union, Tuple
 
+import re
 import streamlit as st
 from agno.agent import Agent
 from agno.document import Document
@@ -12,6 +13,7 @@ from agno.document.reader.website_reader import WebsiteReader
 from agno.models.response import ToolExecution
 from agno.utils.log import logger
 
+from workspace.utils.model_providers import CHAT_MODELS
 
 async def initialize_agent_session_state(agent_name: str):
     logger.info(f"---*--- Initializing session state for {agent_name} ---*---")
@@ -39,21 +41,73 @@ async def initialize_workflow_session_state(workflow_name: str):
         "messages": [],
     }
 
+def inject_global_styles():
+    st.markdown("""<style>.v-sep{width:2px;height:100%;background:#eee;}</style>""", unsafe_allow_html=True)
+
+def ensure_session_defaults(defaults: Dict[str, Any]):
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v    
 
 async def selected_model() -> str:
-    """Display a model selector in the sidebar."""
-    model_options = {
-        "qwen": "qwen3:30b",
-        #"gpt-4o": "gpt-4o",
-        "gpt-4o-mini": "gpt-4o-mini",
-    }
-    selected_model = st.sidebar.selectbox(
+    # model_options = {}
+    # for k,v in CHAT_MODELS.items():
+    #     model_options[k] = model_options[v].get("model_id")  
+    selected_model = st.selectbox(
         "Choose a model",
-        options=list(model_options.keys()),
+        options=list(CHAT_MODELS.keys()),
         index=0,
         key="model_selector",
     )
-    return model_options[selected_model]
+    return CHAT_MODELS[selected_model]
+
+# ====== Think Masking ======
+def mask_thoughts(text: str, notice_inserted: bool) -> Tuple[str, bool]:
+    t = text
+
+    # 1) XML-style <think>...</think>
+    pat_xml = re.compile(r"(?is)<\s*think\s*>.*?<\s*/\s*think\s*>")
+    if pat_xml.search(t):
+        if not notice_inserted:
+            t = pat_xml.sub(" <span class='badge-thinking'>생각 중…</span> ", t, count=1)
+            notice_inserted = True
+        t = pat_xml.sub("", t)
+
+    # 2) Fenced code blocks ```think/analysis/...```
+    pat_fence = re.compile(r"(?is)```(?:\s*(?:think|thoughts|analysis|chain[_ -]?of[_ -]?thought)[^\n]*)\n.*?```")
+    if pat_fence.search(t):
+        if not notice_inserted:
+            t = pat_fence.sub(" <span class='badge-thinking'>생각 중…</span> ", t, count=1)
+            notice_inserted = True
+        t = pat_fence.sub("", t)
+
+    # 3) Bracketed tokens [think]...[/think] or 【Thinking】…
+    pat_br = re.compile(r"(?is)[\[\{（(【]\s*(?:think|thinking|thoughts)\s*[\]\}）)】].*?[\[\{（(【]\s*/?\s*(?:think|thinking|thoughts)\s*[\]\}）)】]")
+    if pat_br.search(t):
+        if not notice_inserted:
+            t = pat_br.sub(" <span class='badge-thinking'>생각 중…</span> ", t, count=1)
+            notice_inserted = True
+        t = pat_br.sub("", t)
+
+    # 4) Streaming partial start tokens: "...<think>" without close, or "think:" prefix at top
+    lower = t.lower()
+    s = lower.rfind("<think>")
+    e = lower.rfind("</think>")
+    if s != -1 and (e == -1 or e < s):
+        t = t[:s]
+        if not notice_inserted:
+            t += " <span class='badge-thinking'>생각 중…</span> "
+            notice_inserted = True
+
+    # 5) If text begins with "think: ..." lines before a blank line, strip them
+    m = re.match(r"(?is)^\s*(?:think|analysis|thoughts)\s*[:>].*?(?:\n\s*\n|$)", t)
+    if m:
+        t = t[m.end():]
+        if not notice_inserted:
+            t = " <span class='badge-thinking'>생각 중…</span> " + t
+            notice_inserted = True
+
+    return t, notice_inserted
 
 
 async def add_message(
