@@ -1,22 +1,41 @@
-
+# ui/panes/sim.py
 import streamlit as st
-from ui.state import PensionContext
-#from teams.pension_master import team_run
-def render_sim_pane():
-    st.subheader("시뮬레이션")
-    ctx: PensionContext = st.session_state["context"]
-    with st.form("sim_form"):
-        amount = st.number_input("월 납입액 가정", min_value=0, value=int(ctx.sim_params.get("monthly", 300000)))
-        years  = st.number_input("납입 기간(년)", min_value=0, value=int(ctx.sim_params.get("years", 10)))
-        submitted = st.form_submit_button("시뮬레이션 실행")
-        if submitted:
-            ctx.sim_params={"monthly":int(amount),"years":int(years)}
-            user_prompt="시뮬레이션을 실행해 주세요. 전제와 결과를 요약해 주세요."; team=st.session_state["team"]
-            # import asyncio
-            # async def _run():
-            #     chunks=[]
-            #     async for ch in team_run(team, user_prompt, ctx, stream=False): chunks.append(ch)
-            #     return chunks
-            # res=asyncio.run(_run()); st.success("실행 완료"); st.json(res[-1] if res else {})
-    st.divider()
-    if st.button("◀ 정보 보기로", use_container_width=True): st.session_state.left_view="info"; st.rerun()
+import pandas as pd
+from typing import Any, Dict
+from dataclasses import asdict, is_dataclass
+
+def _ctx_to_dict(ctx: Any) -> Dict[str, Any]:
+    if ctx is None:
+        return {}
+    if isinstance(ctx, dict):
+        return ctx
+    if is_dataclass(ctx):
+        try:
+            return asdict(ctx)
+        except Exception:
+            return getattr(ctx, "__dict__", {}) or {}
+    return getattr(ctx, "__dict__", {}) or {}
+
+def render_sim_pane(ctx_obj: Any):
+    """현재 컨텍스트를 기반으로 간단한 시뮬레이션 데모."""
+    st.markdown("#### 시뮬레이션")
+    ctx = _ctx_to_dict(ctx_obj)
+
+    if not ctx or not ctx.get("accounts"):
+        st.info("컨텍스트에 계좌가 없습니다. 좌측에서 고객을 선택하세요.")
+        return
+
+    df = pd.DataFrame(ctx["accounts"])
+    if "acnt_evlu_amt" in df.columns:
+        df["acnt_evlu_amt"] = pd.to_numeric(df["acnt_evlu_amt"], errors="coerce").fillna(0)
+
+    # 파라미터 예시
+    years = st.slider("기간(년)", 1, 30, 10, 1)
+    rate  = st.slider("연 수익률(%)", 0.0, 15.0, 4.0, 0.5)
+
+    current = float(df.get("acnt_evlu_amt", pd.Series([0])).sum())
+    proj = current * ((1 + rate/100.0) ** years)
+    st.metric("현재 평가액 합계", f"{int(current):,}")
+    st.metric(f"{years}년 후 예상", f"{int(proj):,}")
+
+    st.caption("※ 데모: 실제 규정/세제/입출금 반영 로직은 도메인에 맞게 확장하세요.")

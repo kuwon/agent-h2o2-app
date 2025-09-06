@@ -1,4 +1,5 @@
 from typing import Any, Callable, Dict, List, Optional, Union, Tuple
+from dataclasses import asdict, is_dataclass
 
 import re
 import streamlit as st
@@ -61,53 +62,94 @@ async def selected_model() -> str:
     )
     return CHAT_MODELS[selected_model]
 
+# ====== Context Utils ======
+def _ctx_to_dict_any(ctx: Any) -> Dict[str, Any]:
+    if ctx is None:
+        return {}
+    if isinstance(ctx, dict):
+        return ctx
+    if is_dataclass(ctx):
+        try:
+            return asdict(ctx)
+        except Exception:
+            return getattr(ctx, "__dict__", {}) or {}
+    return getattr(ctx, "__dict__", {}) or {}
+
+def get_ctx_dict() -> Dict[str, Any]:
+    return _ctx_to_dict_any(st.session_state.get("context"))
+
+def update_ctx(**fields):
+    """
+    세션의 context를 dict로 강제 정규화하고, 주어진 필드를 병합 업데이트한 뒤
+    다시 st.session_state['context']에 '재할당'한다.
+    """
+    ctx = get_ctx_dict()
+    # numpy 스칼라 → Python 스칼라 변환
+    def _py(v):
+        try:
+            return v.item() if hasattr(v, "item") else v
+        except Exception:
+            return v
+
+    for k, v in fields.items():
+        if isinstance(v, dict):
+            ctx[k] = {kk: _py(vv) for kk, vv in v.items()}
+        elif isinstance(v, list):
+            new_list = []
+            for item in v:
+                if isinstance(item, dict):
+                    new_list.append({kk: _py(vv) for kk, vv in item.items()})
+                else:
+                    new_list.append(_py(item))
+            ctx[k] = new_list
+        else:
+            ctx[k] = _py(v)
+
+    # 문자열 유지가 필요한 필드 보정
+    if "customer_id" in ctx and ctx["customer_id"] is not None:
+        ctx["customer_id"] = str(ctx["customer_id"])
+
+    st.session_state["context"] = ctx  # ✅ 반드시 재할당
+
 # ====== Think Masking ======
-def mask_thoughts(text: str, notice_inserted: bool) -> Tuple[str, bool]:
-    t = text
 
-    # 1) XML-style <think>...</think>
-    pat_xml = re.compile(r"(?is)<\s*think\s*>.*?<\s*/\s*think\s*>")
-    if pat_xml.search(t):
-        if not notice_inserted:
-            t = pat_xml.sub(" <span class='badge-thinking'>생각 중…</span> ", t, count=1)
-            notice_inserted = True
-        t = pat_xml.sub("", t)
+THINK_SPINNER_HTML = """
+<div style="display:flex;align-items:center;gap:10px;margin:6px 0 2px 0;opacity:.9;">
+  <div style="position:relative;width:18px;height:18px;">
+    <div style="
+      position:absolute;inset:0;border-radius:50%;
+      border:2px solid rgba(0,0,0,0.12);
+      border-top-color: rgba(0,0,0,0.45);
+      animation: spin 0.8s linear infinite;
+    "></div>
+  </div>
+  <div style="font-size:0.95rem;color:rgba(0,0,0,0.60);">생각 중…</div>
+</div>
+<style>
+@keyframes spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
+</style>
+"""
 
-    # 2) Fenced code blocks ```think/analysis/...```
-    pat_fence = re.compile(r"(?is)```(?:\s*(?:think|thoughts|analysis|chain[_ -]?of[_ -]?thought)[^\n]*)\n.*?```")
-    if pat_fence.search(t):
-        if not notice_inserted:
-            t = pat_fence.sub(" <span class='badge-thinking'>생각 중…</span> ", t, count=1)
-            notice_inserted = True
-        t = pat_fence.sub("", t)
+THINK_BLOCK_REGEX = re.compile(r"<think>.*?</think>", flags=re.DOTALL | re.IGNORECASE)
 
-    # 3) Bracketed tokens [think]...[/think] or 【Thinking】…
-    pat_br = re.compile(r"(?is)[\[\{（(【]\s*(?:think|thinking|thoughts)\s*[\]\}）)】].*?[\[\{（(【]\s*/?\s*(?:think|thinking|thoughts)\s*[\]\}）)】]")
-    if pat_br.search(t):
-        if not notice_inserted:
-            t = pat_br.sub(" <span class='badge-thinking'>생각 중…</span> ", t, count=1)
-            notice_inserted = True
-        t = pat_br.sub("", t)
+def mask_thoughts(streamed_text: str, displayed_once_think: bool, final: bool = False):
+    text = streamed_text or ""
 
-    # 4) Streaming partial start tokens: "...<think>" without close, or "think:" prefix at top
-    lower = t.lower()
-    s = lower.rfind("<think>")
-    e = lower.rfind("</think>")
-    if s != -1 and (e == -1 or e < s):
-        t = t[:s]
-        if not notice_inserted:
-            t += " <span class='badge-thinking'>생각 중…</span> "
-            notice_inserted = True
+    # 1) <think> 처리: 스트림 중 스피너, 완료 시 제거
+    if THINK_BLOCK_REGEX.search(text):
+        if final:
+            text = THINK_BLOCK_REGEX.sub("", text)
+        else:
+            if not displayed_once_think:
+                text = THINK_BLOCK_REGEX.sub(THINK_SPINNER_HTML, text, count=1)
+                displayed_once_think = True
+            else:
+                text = THINK_BLOCK_REGEX.sub("", text)
+                
+    # 3) 공백 줄 정리
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
 
-    # 5) If text begins with "think: ..." lines before a blank line, strip them
-    m = re.match(r"(?is)^\s*(?:think|analysis|thoughts)\s*[:>].*?(?:\n\s*\n|$)", t)
-    if m:
-        t = t[m.end():]
-        if not notice_inserted:
-            t = " <span class='badge-thinking'>생각 중…</span> " + t
-            notice_inserted = True
-
-    return t, notice_inserted
+    return text, displayed_once_think
 
 
 def ensure_message_bucket(agent_name: str) -> None:

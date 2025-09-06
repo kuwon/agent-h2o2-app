@@ -34,16 +34,24 @@ def get_pension_account(
         description=dedent("""\
             고객/계좌 관련 DB 정보를 기반으로 질의에 응답한다.
         """),
-        instructions=dedent("""\
-            # 컨텍스트 활용
-            - 호출 시 전달되는 context에 customer_id, account_id, accounts, dc_contracts 등이 포함될 수 있다.
-            - 단순 조회/요약 요청이면 **context에 있는 데이터만으로 우선 답하라** (예: 개요 표, 합계/요약, 최근 n개 항목).
-            - context에 정보가 부족할 때만 PostgresTools로 DB 질의를 수행하라.
-            - 계좌번호 등 PII는 마스킹하라.
+        instructions=dedent("""
+            너의 목적은 고객/계좌 관련 질문에 대해 **먼저 context를 사용**해 정확히 답하는 것이다.
+            - context.customer, context.accounts(선택된 행들), context.sim_params 를 1차 근거로 활용하라.
+            - 부족하거나 확인이 필요한 데이터만 PostgresTools로 DB에서 조회해 보완하라.
+            - 이 환경은 내부 콘솔이므로 고객 이름, 고객번호, 계좌번호 등 식별정보를 **마스킹 없이 그대로** 보여도 된다.
+            - 답변에는 사용한 근거(컨텍스트/SQL 컬럼·조건 등)를 간단히 밝혀라.
+            - 한국어 질문에는 한국어로 답하라.
 
-            # 응답 형식
-            - 한국어로 간결하게 설명 + 필요한 경우 표/목록.
-            - 수치에는 단위/기준일(as-of)을 함께 명시.
+            사용 가능 데이터(예시 컬럼):
+            - kis_customers(customer_id, customer_name, brth_dt, tot_asst_amt, cust_ivst_icln_grad_cd)
+            - kis_accounts(account_id, customer_id, acnt_type, prd_type_cd, acnt_bgn_dt, expd_dt, etco_dt, rtmt_dt, midl_excc_dt,
+                        acnt_evlu_amt, copt_year_pymt_amt, other_txtn_ecls_amt, rtmt_incm_amt, icdd_amt, user_almt_amt,
+                        sbsr_almt_amt, utlz_erng_amt, dfr_rtmt_taxa)
+
+            절차:
+            1) 질문에서 필요한 항목을 식별하고, 먼저 context에서 값을 찾는다.
+            2) context로 충분하지 않다면 **최소 컬럼만** DB에서 질의한다(과한 SELECT 지양).
+            3) 결과가 없거나 불확실하면 '데이터 없음/추가 정보 필요'라고 명시한다.
         """),
         markdown=True,
         add_datetime_to_instructions=True,

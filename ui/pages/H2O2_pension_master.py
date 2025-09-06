@@ -10,6 +10,7 @@ from teams.pension_master import get_pension_master_team
 from ui.css import CUSTOM_CSS
 from ui.chat import render_chat_pane
 from ui.panes import render_left_pane
+from ui.panes.context_builder import render_context_inline
 from ui.utils import (
     about_agno,
     add_message,
@@ -90,20 +91,52 @@ async def body() -> None:
     left, gap, right = st.columns([0.48, 0.02, 0.50], gap="small")
     with left:
         render_left_pane(st.session_state.get("left_view", "info"))
+
     with gap:
         st.markdown('<div class="v-sep"></div>', unsafe_allow_html=True)
+
+
     with right:
-        st.subheader("챗봇 · 컨텍스트 · 실행")
-        # 간단 컨텍스트 미리보기
-        ctx: PensionContext = st.session_state["context"]
-        st.json({
-            "customer_id": ctx.customer_id,
-            "accounts_preview": ctx.accounts[:2],
-            "dc_contracts_preview": ctx.dc_contracts[:2],
-            "sim_params": ctx.sim_params,
-        })
-        st.divider()
-        await render_chat_pane(team)
+        # 탭 폰트/패딩 키우기
+        st.markdown("""
+        <style>
+        /* 탭 버튼 자체 크기 키우기 */
+        button[role="tab"] {
+            font-size: 18px !important;   /* 글자 크게 */
+            font-weight: 600 !important;  /* 굵게 */
+            padding: 14px 22px !important;/* 패딩 키움 */
+            line-height: 1.4 !important;  /* 줄간격 여유 */
+        }
+
+        /* 선택된 탭 강조 */
+        button[aria-selected="true"][role="tab"] {
+            background-color: #f0f2f6 !important;
+            border-bottom: 3px solid #2b6cb0 !important; /* 파란 밑줄 */
+            font-weight: 700 !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+
+        st.subheader("대화 · 시뮬레이션 · 컨텍스트")
+
+        tab_chat, tab_sim, tab_ctx = st.tabs(["💬 AI에게 물어보기", "📈 시뮬레이션 계산기", "🧩 Context 미리보기/편집"])
+
+        with tab_ctx:
+            render_context_inline(expanded=False)
+
+        with tab_sim:
+            try:
+                from ui.panes.sim import render_sim_pane
+            except Exception:
+                st.info("시뮬레이션 Pane 모듈이 아직 없습니다. ui/panes/sim.py를 추가하세요.")
+            else:
+                ctx_obj = st.session_state.get("context")
+                render_sim_pane(ctx_obj)   # 현재 컨텍스트 기반
+
+        with tab_chat:
+            await render_chat_pane(team)
+
 
 
 async def main():
