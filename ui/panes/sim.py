@@ -6,9 +6,11 @@ from dataclasses import asdict, is_dataclass
 from datetime import date as _date
 from datetime import datetime
 import math
-from workspace.toolkits import pnsn_calculator # import (_to_date, 절사10원, add_year_safe, calc_근속년수공제, calc_환산급여, calc_환산급여별공제, calc_환산산출세액, calc_퇴직소득세, calc_연금수령가능일, simulate_pension)
+from workspace.toolkits import pnsn_calculator
 
 from agno.utils.log import logger
+from ui.utils import _ctx_to_dict_any
+
 
 def date_input_optional(label: str, *, default=None, key: str, help: str | None = None,
                         min_value=None, max_value=None):
@@ -48,21 +50,9 @@ def style_dataframe(df: pd.DataFrame):
     return df.style.format(fmt)
 
 
-def _ctx_to_dict(ctx: Any) -> Dict[str, Any]:
-    if ctx is None:
-        return {}
-    if isinstance(ctx, dict):
-        return ctx
-    if is_dataclass(ctx):
-        try:
-            return asdict(ctx)
-        except Exception:
-            return getattr(ctx, "__dict__", {}) or {}
-    return getattr(ctx, "__dict__", {}) or {}
-
 def render_sim_pane(ctx_obj: Any):
 
-    ctx = _ctx_to_dict(ctx_obj)
+    ctx = _ctx_to_dict_any(ctx_obj)
     
     if not ctx or not ctx.get("sim_params"):
         st.info("컨텍스트에 시뮬레이션 정보가 없습니다. 좌측에서 고객을 선택하세요.")

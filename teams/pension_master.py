@@ -27,7 +27,7 @@ def get_pension_master_team(
 
     return Team(
         name="pension_master_team",
-        team_id="pension-master-team",
+        team_id="pension_master_team",
         mode="route",  # 내부 라우팅은 사용하지 않고, 아래 run_pension_master로 직접 오케스트레이션
         members=[get_intent(model_id=model_id, user_id=user_id, session_id=session_id, debug_mode=debug_mode),
                  get_pension_policy(model_id=model_id, user_id=user_id, session_id=session_id, debug_mode=debug_mode),

@@ -1,6 +1,7 @@
 # ui/chat.py
 from __future__ import annotations
-from typing import Any
+from typing import Any, List, Dict, Callable, Optional
+from uuid import uuid4
 
 import asyncio
 import nest_asyncio
@@ -24,36 +25,23 @@ nest_asyncio.apply()
 # -----------------------------------------------------------------------------
 # Session helpers
 # -----------------------------------------------------------------------------
-def _ensure_session_defaults() -> None:
-    """context/messages 기본값 보장"""
-    if "context" not in st.session_state or st.session_state["context"] is None:
-        try:
-            st.session_state["context"] = PensionContext()  # dataclass
-        except Exception:
-            st.session_state["context"] = {}
-    if "messages" not in st.session_state or st.session_state["messages"] is None:
-        st.session_state["messages"] = []
+def _sk(team_key: str, name: str) -> str:
+    return f"{team_key}:{name}"
 
-def on_clear_chat_only():
-    """ UI 상의 메세지를 삭제"""
-    st.session_state["messages"] = []
-    #st.rerun()
+def _ensure_defaults(team_key: str) -> None:
+    st.session_state.setdefault(_sk(team_key, "messages"), [])      # type: ignore[list-item]
+    st.session_state.setdefault(_sk(team_key, "input"), "")
+    st.session_state.setdefault(_sk(team_key, "chat_key"), str(uuid4()))
+    st.session_state.setdefault(_sk(team_key, "prev_gen_token"), None)
 
+def _append(team_key: str, role: str, content: str) -> None:
+    st.session_state[_sk(team_key, "messages")].append({"role": role, "content": content})
 
-def on_reset_session(team: Team):
-    user_id = team.user_id
-    team_name = team.name
-    
-    try:
-        team.delete_session(st.session_state[team_name]["session_id"])
-    except Exception as e:
-        st.warning(f"세션 삭제 중 경고: {e}")
-    
-    new_team = get_pension_master_team(user_id=user_id)
-    st.session_state[new_team.name]["session_id"] = new_team.load_session()
-    
-    st.session_state["context"] = PensionContext() # 이건 살짝 고민
-    st.rerun()
+def _clear_chat_only(team_key: str) -> None:
+    st.session_state[_sk(team_key, "messages")] = []
+    st.session_state[_sk(team_key, "input")] = ""
+    st.session_state[_sk(team_key, "chat_key")] = str(uuid4())
+
 
 def _ctx_to_payload(ctx_obj: Any) -> dict:
     """PensionContext(dataclass)/dict/기타 → dict payload로 정규화"""
@@ -141,25 +129,46 @@ def _format_tool_event(ev: Any) -> str:
 # -----------------------------------------------------------------------------
 # Main render
 # -----------------------------------------------------------------------------
-async def render_chat_pane(team: Team) -> None:
-    """오른쪽 Chat 패널. 반드시 `await render_chat_pane(team)`로 호출하세요."""
-    _ensure_session_defaults()
+async def render_chat_pane(
+    team,                                   # 주입된 Team 인스턴스
+    team_key: str = "pension_master_team",  # 네임스페이스용 키
+    gen_token: Optional[int] = None,        # 팀 세대 토큰(페이지가 관리)
+    on_clear: Optional[Callable[[], None]] = None,  # Clear 시 페이지 콜백(팀 재생성)
+) -> None:
+    """
+    - team: 페이지에서 생성해 넘긴 Team
+    - team_key: 세션 키 네임스페이스
+    - gen_token: 팀 재생성 식별 토큰(값이 바뀌면 채팅 자동 초기화)
+    - on_clear: Clear 누를 때 호출(페이지에서 reset_token 증가 후 rerun)
+    """
+    _ensure_defaults(team_key)
     
+    # 팀 토큰 변경 감지 → 채팅 자동 초기화
+    prev_token = st.session_state[_sk(team_key, "prev_gen_token")]
+    if gen_token is not None and prev_token is not None and gen_token != prev_token:
+        _clear_chat_only(team_key)
+    st.session_state[_sk(team_key, "prev_gen_token")] = gen_token
+
     ctx: PensionContext = st.session_state["context"]
     ctx_payload = _ctx_to_payload(ctx)  # ✅ team에게 넘길 컨텍스트
 
     st.divider()
     st.markdown("#### 채팅")
 
-    controls_col1, controls_col2 = st.columns(2)
-    with controls_col1:
-        st.button("\U0001f9f9 채팅만 비우기", on_click=on_clear_chat_only, use_container_width=True)
-    #with controls_col2:
-    #    st.button("\U0001f9f9 세션 초기화", on_click=on_reset_session(team), use_container_width=True)
+    # 상단 버튼
+    cols = st.columns([1, 1, 6])
+    with cols[0]:
+        if st.button("🧹 Clear", key=_sk(team_key, "btn_clear")):
+            _clear_chat_only(team_key)
+            if callable(on_clear):
+                on_clear()   # 페이지: 팀 재생성(reset_token 증가 등)
+            st.rerun()
+
+    st.markdown("<div id='chat-top'></div>", unsafe_allow_html=True)
     # 1) 기존 대화 표시
     chat_holder = st.container()
     with chat_holder:
-        for msg in st.session_state["messages"]:
+        for msg in st.session_state[_sk(team_key, "messages")]:
             role = "assistant" if msg.get("role") == "assistant" else "user"
             st.chat_message(role).markdown(msg.get("content", ""), unsafe_allow_html=True)
 
@@ -184,19 +193,36 @@ async def render_chat_pane(team: Team) -> None:
     if not user_input:
         return
 
-    # (1) 유저 메시지 저장/렌더
-    st.session_state["messages"].append({"role": "user", "content": user_input})
+    # (A) 전송 직후, 스크롤을 채팅 상단으로 ↑
+    components.v1.html(
+        """
+        <script>
+        const topEl = document.getElementById('chat-top');
+        if (topEl) topEl.scrollIntoView({behavior: 'auto', block: 'start'});
+        </script>
+        """,
+        height=0,
+    )
+
+    # (B) 유저 메시지: 세션 + (옵션) DB
+    _append(team_key, "user", user_input)
+    maybe_coro = add_message(team.name, "user", user_input)  # DB/로그 저장도 같이
+    if asyncio.iscoroutine(maybe_coro):
+        await maybe_coro
+
     with chat_holder:
         st.chat_message("user").markdown(user_input, unsafe_allow_html=True)
 
-        # (2) 어시스턴트 스트리밍 출력
+        # (C) 어시스턴트 스트리밍
         resp_area = st.chat_message("assistant")
         placeholder = resp_area.empty()
         streamed = ""
         displayed_once_think = False
 
-        # ✅ 한 줄짜리 컨텍스트 요약 캡션
-        st.caption(f"ctx: customer={'yes' if ctx_payload.get('customer') else 'no'}, accounts={len(ctx_payload.get('accounts', []))}")
+        st.caption(
+            f"ctx: customer={'yes' if ctx_payload.get('customer') else 'no'}, "
+            f"accounts={len(ctx_payload.get('accounts', []))}"
+        )
 
         try:
             run_response = run_pension_master(team, user_input, ctx_payload)
@@ -219,18 +245,18 @@ async def render_chat_pane(team: Team) -> None:
 
             final_visible, _ = mask_thoughts(streamed, displayed_once_think, final=True)
 
+            # (D) 어시스턴트 메시지: 세션 + (옵션) DB
+            _append(team_key, "assistant", final_visible)
             maybe_coro = add_message(team.name, "assistant", final_visible)
             if asyncio.iscoroutine(maybe_coro):
                 await maybe_coro
 
-            # ✅ 요약 바(스트림 바이트/툴 이벤트)
             st.caption(f"stream bytes={len(streamed)}, tools={tool_event_count}")
 
             if tool_event_count > 0:
                 with st.expander(f"🔧 내부 도구 사용 내역 ({tool_event_count})", expanded=False):
                     for ev in tool_events:
                         st.markdown(_format_tool_event(ev), unsafe_allow_html=True)
-                # st.caption("도구 로그는 응답 본문과 분리해 표시합니다.")
 
         except Exception as e:
             st.error("대화 스트리밍 중 오류가 발생했습니다.")

@@ -5,8 +5,10 @@ import streamlit as st
 from dataclasses import asdict, is_dataclass
 from typing import Any, Dict, List
 
-from ui.state import PensionContext
 from workspace.utils.db_key_eng_kor import KMAP_ACCOUNTS, KMAP_CUSTOMERS
+from ui.state import PensionContext
+from ui.utils import _ctx_to_dict_any
+
 
 def _ctx_to_dict(ctx: PensionContext | Dict[str, Any]) -> Dict[str, Any]:
     if ctx is None: return {}
@@ -33,7 +35,7 @@ def render_context_inline(expanded: bool = False) -> None:
     if "context" not in st.session_state or st.session_state["context"] is None:
         st.session_state["context"] = PensionContext()
 
-    ctx_dict = _ctx_to_dict(st.session_state["context"])
+    ctx_dict = _ctx_to_dict_any(st.session_state["context"])
 
     with st.expander("🧩 Context Builder (편집 가능)", expanded=expanded):
         # 보기 언어: 한글/영문

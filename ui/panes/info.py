@@ -351,7 +351,9 @@ def render_info_pane():
         fit_columns_on_load=False,
         allow_horizontal_scroll=True,
         display_labels=KMAP_ACCOUNTS,
-        select_all_on_load=True,
+        select_all_on_load=True,            # 최초 렌더에서 전체 선택
+        select_all_on_data_change=True,     # 고객 바꿔서 df가 교체될 때마다 전체 선택
+        select_filtered_only=False,         # 필터 무관 전체 선택
     )
     selected_rows = _extract_selected_rows(grid_res)
     selected_df = pd.DataFrame(selected_rows) if selected_rows else pd.DataFrame()

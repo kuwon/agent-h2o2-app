@@ -90,3 +90,6 @@ CREATE CAST (varchar AS vector) WITH INOUT AS IMPLICIT;
 "sbsr_almt_amt":"가입자부담금",
 "utlz_erng_amt":"운용수익금액",
 "dfr_rtmt_taxa":"이연퇴직소득세",
+
+
+aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 037129617559.dkr.ecr.ap-northeast-2.amazonaws.com
