@@ -11,7 +11,8 @@ class PensionContext:
     accounts: List[Dict[str, Any]] = field(default_factory=list)
     sim_params: Dict[str, Any] = field(default_factory=dict)
 SESSION_DEFAULTS = {
-    "left_view":"info","messages":[], 
+    "left_view":"info",
+    "messages":[],
     "context": PensionContext(), 
     "agent_cfg":{
         "provider":CHAT_MODELS.get('gpt-economy').get('provider'),

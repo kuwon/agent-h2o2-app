@@ -16,7 +16,7 @@ from ui.utils import (
     add_message,   # async/sync 모두 대응
 )
 
-from teams.pension_master import run_pension_master
+from teams.pension_master import run_pension_master, get_pension_master_team
 
 nest_asyncio.apply()
 
@@ -34,6 +34,26 @@ def _ensure_session_defaults() -> None:
     if "messages" not in st.session_state or st.session_state["messages"] is None:
         st.session_state["messages"] = []
 
+def on_clear_chat_only():
+    """ UI 상의 메세지를 삭제"""
+    st.session_state["messages"] = []
+    #st.rerun()
+
+
+def on_reset_session(team: Team):
+    user_id = team.user_id
+    team_name = team.name
+    
+    try:
+        team.delete_session(st.session_state[team_name]["session_id"])
+    except Exception as e:
+        st.warning(f"세션 삭제 중 경고: {e}")
+    
+    new_team = get_pension_master_team(user_id=user_id)
+    st.session_state[new_team.name]["session_id"] = new_team.load_session()
+    
+    st.session_state["context"] = PensionContext() # 이건 살짝 고민
+    st.rerun()
 
 def _ctx_to_payload(ctx_obj: Any) -> dict:
     """PensionContext(dataclass)/dict/기타 → dict payload로 정규화"""
@@ -124,12 +144,18 @@ def _format_tool_event(ev: Any) -> str:
 async def render_chat_pane(team: Team) -> None:
     """오른쪽 Chat 패널. 반드시 `await render_chat_pane(team)`로 호출하세요."""
     _ensure_session_defaults()
+    
     ctx: PensionContext = st.session_state["context"]
     ctx_payload = _ctx_to_payload(ctx)  # ✅ team에게 넘길 컨텍스트
 
     st.divider()
     st.markdown("#### 채팅")
 
+    controls_col1, controls_col2 = st.columns(2)
+    with controls_col1:
+        st.button("채팅만 비우기", on_click=on_clear_chat_only, use_container_width=True)
+    #with controls_col2:
+    #    st.button("\U0001f9f9 세션 초기화", on_click=on_reset_session(team), use_container_width=True)
     # 1) 기존 대화 표시
     chat_holder = st.container()
     with chat_holder:

@@ -26,7 +26,7 @@ def get_pension_master_team(
     model_id = model_id or team_settings.openai_economy
 
     return Team(
-        name="Pension Master Team",
+        name="pension_master_team",
         team_id="pension-master-team",
         mode="route",  # 내부 라우팅은 사용하지 않고, 아래 run_pension_master로 직접 오케스트레이션
         members=[get_intent(model_id=model_id, user_id=user_id, session_id=session_id, debug_mode=debug_mode),
