@@ -25,6 +25,11 @@ from ui.utils import update_ctx
 
 from workspace.utils.db_key_eng_kor import KMAP_ACCOUNTS, KMAP_CUSTOMERS
 
+from datetime import datetime
+
+def ymd_to_iso(s: str) -> str:
+    return datetime.strptime(s, "%Y%m%d").strftime("%Y-%m-%d")
+
 
 # --------------------------------------------------------------------------------------
 # DB Session (cache)
@@ -306,19 +311,6 @@ def render_info_pane():
             customer_display=None,
             accounts=[],
             sim_params={        
-                "평가기준일":"2025-09-01",
-                "생년월일":"1968-02-15",
-                "입사일":"2009-10-01",
-                "퇴직일":"2025-09-01",
-                "퇴직연금제도가입일":"2012-01-01",
-                "IRP가입일":"2014-05-01",
-                "연금개시일":"2027-12-31",
-                "과세제외_자기부담금":30_000_000,
-                "이연퇴직소득":500_000_000,
-                "그외":150_000_000 + 20_000_000,
-                "운용수익률":0.03,
-                "지급옵션":"기간확정형",
-                "지급기간_년":5,
             }
         )
         st.info("좌측에서 고객을 선택하면 상세 정보와 계좌가 표시됩니다.")
@@ -391,7 +383,7 @@ def render_info_pane():
         accounts=selected_df.to_dict(orient="records"),
         sim_params={        
             "평가기준일":"2025-09-01",
-            "생년월일":"1968-02-15",
+            "생년월일":customer_display_kor.get("생년월일", "19680215"),
             "입사일":"2009-10-01",
             "퇴직일":"2025-09-01",
             "퇴직연금제도가입일":"2012-01-01",

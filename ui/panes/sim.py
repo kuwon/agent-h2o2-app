@@ -4,9 +4,11 @@ import pandas as pd
 from typing import Any, Dict
 from dataclasses import asdict, is_dataclass
 from datetime import date as _date
+from datetime import datetime
 import math
 from workspace.toolkits import pnsn_calculator # import (_to_date, 절사10원, add_year_safe, calc_근속년수공제, calc_환산급여, calc_환산급여별공제, calc_환산산출세액, calc_퇴직소득세, calc_연금수령가능일, simulate_pension)
 
+from agno.utils.log import logger
 
 def date_input_optional(label: str, *, default=None, key: str, help: str | None = None,
                         min_value=None, max_value=None):
@@ -61,6 +63,7 @@ def _ctx_to_dict(ctx: Any) -> Dict[str, Any]:
 def render_sim_pane(ctx_obj: Any):
 
     ctx = _ctx_to_dict(ctx_obj)
+    
     if not ctx or not ctx.get("sim_params"):
         st.info("컨텍스트에 시뮬레이션 정보가 없습니다. 좌측에서 고객을 선택하세요.")
         return
@@ -68,10 +71,9 @@ def render_sim_pane(ctx_obj: Any):
     st.markdown("##### 연금수령 시뮬레이션")
     if "지급기간_년" not in st.session_state:
         st.session_state["지급기간_년"] = 10  # <- 원하는 디폴트 
-
     # ★ 기본 디폴트 값 (요청값 반영)
     _def_평가기준일 = _date(2025, 9, 1)
-    _def_생년월일   = _date(1968, 2, 15)
+    _def_생년월일   = datetime.strptime(ctx.get('sim_params').get("생년월일", "19680215"), "%Y%m%d").date()
     _def_입사일     = _date(2009,10, 1)
     _def_퇴직일     = _date(2025, 9, 1)
     _def_IRP가입일   = _date(2014, 5, 1)
