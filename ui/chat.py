@@ -153,7 +153,7 @@ async def render_chat_pane(team: Team) -> None:
 
     controls_col1, controls_col2 = st.columns(2)
     with controls_col1:
-        st.button("채팅만 비우기", on_click=on_clear_chat_only, use_container_width=True)
+        st.button("\U0001f9f9 채팅만 비우기", on_click=on_clear_chat_only, use_container_width=True)
     #with controls_col2:
     #    st.button("\U0001f9f9 세션 초기화", on_click=on_reset_session(team), use_container_width=True)
     # 1) 기존 대화 표시

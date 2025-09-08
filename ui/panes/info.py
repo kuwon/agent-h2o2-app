@@ -351,6 +351,7 @@ def render_info_pane():
         fit_columns_on_load=False,
         allow_horizontal_scroll=True,
         display_labels=KMAP_ACCOUNTS,
+        select_all_on_load=True,
     )
     selected_rows = _extract_selected_rows(grid_res)
     selected_df = pd.DataFrame(selected_rows) if selected_rows else pd.DataFrame()
