@@ -33,3 +33,4 @@ venv*
 
 .bash_history
 .python_history
+.viminfo
