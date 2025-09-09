@@ -1,54 +1,42 @@
-#!/bin/bash
+#!/usr/bin/env sh
+set -eu
 
-############################################################################
-# Container Entrypoint script
-############################################################################
+CMD="${1:-serve}"
 
-if [[ "$PRINT_ENV_ON_LOAD" = true || "$PRINT_ENV_ON_LOAD" = True ]]; then
-  echo "=================================================="
-  printenv
-  echo "=================================================="
-fi
+start_api() {
+  uvicorn api.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips "*" &
+  API_PID=$!
+}
 
-############################################################################
-# Wait for Services
-############################################################################
+start_ui() {
+  streamlit run ui/Home.py --server.address 0.0.0.0 --server.port 8501 --server.headless true &
+  UI_PID=$!
+}
 
-if [[ "$WAIT_FOR_DB" = true || "$WAIT_FOR_DB" = True ]]; then
-  dockerize \
-    -wait tcp://$DB_HOST:$DB_PORT \
-    -timeout 300s
-fi
+stop_all() {
+  [ -n "${API_PID:-}" ] && kill "$API_PID" 2>/dev/null || true
+  [ -n "${UI_PID:-}" ] && kill "$UI_PID" 2>/dev/null || true
+}
 
-if [[ "$WAIT_FOR_REDIS" = true || "$WAIT_FOR_REDIS" = True ]]; then
-  dockerize \
-    -wait tcp://$REDIS_HOST:$REDIS_PORT \
-    -timeout 300s
-fi
+trap stop_all TERM INT
 
-############################################################################
-# Migrate database
-############################################################################
-
-if [[ "$MIGRATE_DB" = true || "$MIGRATE_DB" = True ]]; then
-  echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-  echo "Migrating Database"
-  alembic -c db/alembic.ini upgrade head
-  echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-fi
-
-############################################################################
-# Start App
-############################################################################
-
-case "$1" in
+case "$CMD" in
+  serve)
+    start_api
+    start_ui
+    wait "$API_PID"
+    wait "$UI_PID"
+    ;;
+  api)
+    uvicorn api.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips "*"
+    ;;
+  ui)
+    streamlit run ui/Home.py --server.address 0.0.0.0 --server.port 8501 --server.headless true
+    ;;
   chill)
+    tail -f /dev/null
     ;;
   *)
-    echo "Running: $@"
     exec "$@"
     ;;
 esac
-
-echo ">>> Hello World!"
-while true; do sleep 18000; done
