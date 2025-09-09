@@ -25,5 +25,6 @@ RUN chown -R ${USER}:${USER} ${APP_DIR}
 # Switch to non-root user
 USER ${USER}
 
+EXPOSE 8000 8501
 ENTRYPOINT ["/app/scripts/entrypoint.sh"]
-CMD ["chill"]
+CMD ["serve"]
