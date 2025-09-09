@@ -19,27 +19,27 @@ ws_settings = WorkspaceSettings(
     default_env="dev",
     # -*- Image Settings
     # Repository for images
-    #image_repo="agnohq",
-    image_repo="local",
+    image_repo="037129617559.dkr.ecr.ap-northeast-2.amazonaws.com/h2o2",
+    #image_repo="local",
     # 'Name:tag' for the image
     image_name="agent-app",
     # Build images locally
     #build_images=False,
     build_images=True,
     # Push images to the registry
-    push_images=False,
+    push_images=True,
     # Skip cache when building images
     skip_image_cache=False,
     # Force pull images
     force_pull_images=False,
     # -*- AWS settings
     # Region for AWS resources
-    aws_region="us-east-1",
+    aws_region="ap-northeast-2",
     # Availability Zones for AWS resources
-    aws_az1="us-east-1a",
-    aws_az2="us-east-1b",
+    aws_az1="ap-northeast-2a",
+    aws_az2="ap-northeast-2b",
     # Subnets for AWS resources
-    # aws_subnet_ids=["subnet-xyz", "subnet-xyz"],
+    subnet_ids=["subnet-08e75869bc55b5df1", "subnet-095f958fbf81ed9d4", "subnet-0f55d4128b7e52e0a", "subnet-08d15ceb04b65afdd"],
     # Security Groups for AWS resources
     # aws_security_group_ids=["sg-xyz", "sg-xyz"],
 )
