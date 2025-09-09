@@ -21,7 +21,7 @@ from ui.utils import inject_global_styles, ensure_session_defaults
 nest_asyncio.apply()
 
 st.set_page_config(
-    page_title="한투 퇴직 연금 마스터",
+    page_title="한투 퇴직 연금 마스터 챗봇",
     page_icon=":money_bag:",
     layout="wide",
 )

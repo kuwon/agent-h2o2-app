@@ -94,3 +94,75 @@ CREATE CAST (varchar AS vector) WITH INOUT AS IMPLICIT;
 
 aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 037129617559.dkr.ecr.ap-northeast-2.amazonaws.com
 
+./rds-ip-allow.sh status
+
+ENDPOINT=<위 status에서 본 주소>
+psql "host=$ENDPOINT port=5432 dbname=agentdb user=ai_app password=*** sslmode=require"
+
+
+import psycopg
+conn = psycopg.connect(
+    host="<endpoint>",
+    port=5432,
+    dbname="agentdb",
+    user="ai_app",
+    password="***",
+    sslmode="require",
+)
+
+aws logs tail /ecs/h2o2 --region $REGION --since 10m --follow
+
+
+REGION=ap-northeast-2
+CLUSTER=h2o2-cluster
+SERVICE=h2o2-service
+
+TASKS=$(aws ecs list-tasks --region $REGION --cluster $CLUSTER --service-name $SERVICE \
+  --desired-status STOPPED --query 'taskArns[:5]' --output text)
+
+aws ecs describe-tasks --region $REGION --cluster $CLUSTER --tasks $TASKS \
+  --query 'tasks[].{
+    stoppedReason:stoppedReason,
+    containers:containers[].{
+      name:name, exitCode:exitCode, reason:reason, lastStatus:lastStatus, log:logStreamName
+    }
+  }' --output json
+
+
+TG_ARN=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+  --query 'services[0].loadBalancers[0].targetGroupArn' --output text 2>/dev/null || echo "")
+
+if [ -n "$TG_ARN" ] && [ "$TG_ARN" != "None" ]; then
+  aws ecs update-service --cluster "$CLUSTER" --service "$SERVICE" \
+    --task-definition "$TD_OK" \
+    --load-balancers targetGroupArn="$TG_ARN",containerName="$CN",containerPort=8501 \
+    --health-check-grace-period-seconds 90 \
+    --force-new-deployment
+else
+  aws ecs update-service --cluster "$CLUSTER" --service "$SERVICE" \
+    --task-definition "$TD_OK" \
+    --health-check-grace-period-seconds 90 \
+    --force-new-deployment
+fi
+
+# 서비스 재배포
+aws ecs update-service --region ap-northeast-2 \
+  --cluster h2o2-cluster --service h2o2-service \
+  --force-new-deployment \
+  --health-check-grace-period-seconds 90
+
+TD=$(aws ecs describe-services --region ap-northeast-2 \
+  --cluster h2o2-cluster --services h2o2-service \
+  --query 'services[0].taskDefinition' --output text)
+
+aws ecs describe-task-definition --region ap-northeast-2 --task-definition "$TD" \
+  --query 'taskDefinition.containerDefinitions[0].{env:environment,secrets:secrets}' --output json
+
+
+# TG 헬스
+TG=$(aws ecs describe-services --region $REGION --cluster $CLUSTER --services $SERVICE --query 'services[0].loadBalancers[0].targetGroupArn' --output text)
+aws elbv2 describe-target-health --region $REGION --target-group-arn "$TG" \
+  --query 'TargetHealthDescriptions[].TargetHealth.State' --output text
+
+# 앱 로그
+aws logs tail /ecs/h2o2 --region $REGION --since 10m --follow
