@@ -166,3 +166,25 @@ aws elbv2 describe-target-health --region $REGION --target-group-arn "$TG" \
 
 # 앱 로그
 aws logs tail /ecs/h2o2 --region $REGION --since 10m --follow
+
+### 수동 Migration
+
+ECS_CLUSTER=h2o2-cluster
+TASK_ARN=$(aws ecs list-tasks --cluster h2o2-cluster --query "taskArns[0]" --output text)
+CONTAINER_NAME=api
+
+aws ecs execute-command --cluster $ECS_CLUSTER \
+    --task $TASK_ARN \
+    --container $CONTAINER_NAME \
+    --interactive \
+    --command "alembic -c db/alembic.ini upgrade head"
+
+
+ECS_CLUSTER=h2o2-cluster
+TASK_ARN=$(aws ecs list-tasks --cluster h2o2-cluster --query "taskArns[0]" --output text)
+CONTAINER_NAME=api
+aws ecs execute-command --cluster $ECS_CLUSTER \
+    --task $TASK_ARN \
+    --container $CONTAINER_NAME \
+    --interactive \
+    --command 'sh -lc "vi /app/db/settiong.py"'

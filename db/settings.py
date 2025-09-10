@@ -21,6 +21,10 @@ class DbSettings(BaseSettings):
     migrate_db: bool = False
 
     def get_db_url(self) -> str:
+        env_url = getenv("DATABASE_URL")
+        if env_url:
+            return env_url
+                
         db_url = "{}://{}{}@{}:{}/{}".format(
             self.db_driver,
             self.db_user,

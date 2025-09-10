@@ -2,6 +2,9 @@
 # set -eu  # <- -e 빼서 조기종료 방지
 set -u
 
+cd /app
+export PYTHONPATH="/app:${PYTHONPATH:-}"
+
 CMD="${1:-serve}"
 
 # --- NEW: DB URL 구성 & 대기 ---
