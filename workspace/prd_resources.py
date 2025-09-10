@@ -1,5 +1,6 @@
 # workspace/prd_resources.py
 from os import getenv
+from agno.aws.app.fastapi import FastApi
 from agno.aws.app.streamlit import Streamlit
 from agno.aws.resource.ec2 import InboundRule, SecurityGroup
 from agno.aws.resource.ecs import EcsCluster
@@ -86,7 +87,7 @@ prd_svc_sg = SecurityGroup(
     inbound_rules=[
         InboundRule(description="ALB -> 8501", port=8501, security_group_id=AwsReference(prd_lb_sg.get_security_group_id)),
         # 필요시 FastAPI 8000도 오픈
-        # InboundRule(description="ALB -> 8000", port=8000, security_group_id=AwsReference(prd_lb_sg.get_security_group_id)),
+        InboundRule(description="ALB -> 8000", port=8000, security_group_id=AwsReference(prd_lb_sg.get_security_group_id)),
     ],
     depends_on=[prd_lb_sg],
     subnets=SUBNETS_ALL,
@@ -199,7 +200,7 @@ container_env = {
     # 대기/마이그 옵션
     "WAIT_FOR_DB": prd_db.enabled,
     #"MIGRATE_DB": prd_db.enabled,
-    "MIGRATE_DB": True,
+    "MIGRATE_DB": False,
     # (원하면 DATABASE_URL 한 방에 쓰기)
     #"DATABASE_URL": AwsReference(prd_db.get_databse_url),
 }
@@ -229,6 +230,34 @@ prd_service = Streamlit(
     skip_delete=skip_delete,
     save_output=save_output,
     wait_for_create=False,
+    wait_for_delete=False,
+)
+
+prd_fastapi = FastApi(
+    name=f"h2o2-api",
+    group="api",
+    image=prd_image,
+    command="uvicorn api.main:app--host 0.0.0.0 --port 8000 --workers 2",
+    port_number=8000,
+    ecs_task_cpu="1024",
+    ecs_task_memory="2048",
+    ecs_service_count=1,
+    ecs_cluster=prd_ecs_cluster,
+    aws_secrets=[prd_secret, prd_db_secret],
+    subnets=SUBNETS_PUBLIC,
+    security_groups=[prd_svc_sg],
+    # To enable HTTPS, create an ACM certificate and add the ARN below:
+    # load_balancer_enable_https=True,
+    # load_balancer_certificate_arn="LOAD_BALANCER_CERTIFICATE_ARN",
+    load_balancer_security_groups=[prd_lb_sg],
+    create_load_balancer=True,
+    health_check_path="/v1/health",
+    env_vars=container_env,
+    skip_delete=skip_delete,
+    save_output=save_output,
+    # Do not wait for the service to stabilize
+    wait_for_create=False,
+    # Do not wait for the service to be deleted
     wait_for_delete=False,
 )
 

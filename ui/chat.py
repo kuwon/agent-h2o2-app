@@ -152,17 +152,18 @@ async def render_chat_pane(
     ctx: PensionContext = st.session_state["context"]
     ctx_payload = _ctx_to_payload(ctx)  # ✅ team에게 넘길 컨텍스트
 
-    st.divider()
-    st.markdown("#### 채팅")
-
     # 상단 버튼
-    cols = st.columns([1, 1, 6])
-    with cols[0]:
-        if st.button("🧹 Clear", key=_sk(team_key, "btn_clear")):
+    # --- 헤더: 제목(왼쪽) · Clear 버튼(오른쪽) ---
+    hdr_l, hdr_r = st.columns([8, 2])
+    with hdr_l:
+        st.markdown("#### 채팅")
+    with hdr_r:
+        if st.button("🧹 Clear", key=_sk(team_key, "btn_clear"), use_container_width=True):
             _clear_chat_only(team_key)
             if callable(on_clear):
-                on_clear()   # 페이지: 팀 재생성(reset_token 증가 등)
+                on_clear()
             st.rerun()
+
 
     st.markdown("<div id='chat-top'></div>", unsafe_allow_html=True)
     # 1) 기존 대화 표시

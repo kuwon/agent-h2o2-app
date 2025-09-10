@@ -22,8 +22,8 @@ class DbSettings(BaseSettings):
 
     def get_db_url(self) -> str:
         env_url = getenv("DATABASE_URL")
-        logger.info(f"env_url: {env_url}")
         if env_url:
+            logger.info(f"using env_url: {env_url}")
             return env_url
                 
         db_url = "{}://{}{}@{}:{}/{}".format(

@@ -15,6 +15,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+safe_db_url = db_url.replace('%', '%%')
 config.set_main_option("sqlalchemy.url", db_url)
 
 # add your model's MetaData object here
@@ -34,16 +35,6 @@ def include_name(name, type_, parent_names):
 
 
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode.
-
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-    """
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
@@ -51,9 +42,9 @@ def run_migrations_offline() -> None:
         include_name=include_name,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        version_table_schema=target_metadata.schema,
+        include_schemas=True,                  # ← 추가(권장)
+        version_table_schema="ai",             # ← target_metadata.schema 대신 명시
     )
-
     with context.begin_transaction():
         context.run_migrations()
 
@@ -70,21 +61,23 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
 
+    connection.exec_driver_sql("CREATE SCHEMA IF NOT EXISTS ai")
+    connection.exec_driver_sql("SET search_path TO ai, public")
     with connectable.connect() as connection:
-        # row = connection.exec_driver_sql(
-        #     "select current_database(), current_user, current_schema(), current_setting('search_path')"
-        # ).first()
-        # print("[ALEMBIC-CONN]",
-        #     "db=", row[0],
-        #     "user=", row[1],
-        #     "schema=", row[2],
-        #     "search_path=", row[3],
-        # )
-        # # ai 스키마에 보이는 테이블 개수도 확인
-        # cnt = connection.exec_driver_sql(
-        #     "select count(*) from information_schema.tables where table_schema='ai'"
-        # ).scalar_one()
-        # print("[ALEMBIC-CONN] ai.tables.count =", cnt)
+        row = connection.exec_driver_sql(
+            "select current_database(), current_user, current_schema(), current_setting('search_path')"
+        ).first()
+        print("[ALEMBIC-CONN]",
+            "db=", row[0],
+            "user=", row[1],
+            "schema=", row[2],
+            "search_path=", row[3],
+        )
+        # ai 스키마에 보이는 테이블 개수도 확인
+        cnt = connection.exec_driver_sql(
+            "select count(*) from information_schema.tables where table_schema='ai'"
+        ).scalar_one()
+        print("[ALEMBIC-CONN] ai.tables.count =", cnt)
 
 
         context.configure(

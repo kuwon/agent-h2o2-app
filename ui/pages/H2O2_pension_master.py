@@ -22,7 +22,7 @@ from ui.utils import inject_global_styles, ensure_session_defaults
 nest_asyncio.apply()
 
 st.set_page_config(
-    page_title="한투 퇴직 연금 마스터 챗봇",
+    page_title="한투 퇴직 연금 마스터 Agent",
     page_icon=":money_bag:",
     layout="wide",
 )
@@ -65,7 +65,7 @@ async def header():
     #     "<p class='subheading'>맞춤형 데이터로 상담하고, 정책으로 판단하며, 시뮬레이션 실행까지 </p>",
     #     unsafe_allow_html=True,
     # )
-    TITLE = "한투 <span class='accent'>퇴직연금 마스터</span> | Team H2O2"
+    TITLE = "한투 <span class='accent'>퇴직연금 마스터 Agent</span> | Team H2O2"
     SUBTITLE = "맞춤 데이터로 상담하고, 정책으로 판단하며, 시뮬레이션으로 실행합니다"
 
     st.markdown(TITLE_SUBTITLE_CSS, unsafe_allow_html=True)
@@ -189,7 +189,7 @@ async def body() -> None:
                 render_sim_pane(ctx_obj)   # 현재 컨텍스트 기반
             else:
                 st.info("가지고 계신 DC/IRP/연금저축 계좌 중 **최소 하나는** 선택해주세요.")
-                
+
         with tab_chat:
             await render_chat_pane(team)
 

@@ -188,3 +188,48 @@ aws ecs execute-command --cluster $ECS_CLUSTER \
     --container $CONTAINER_NAME \
     --interactive \
     --command 'sh -lc "vi /app/db/settiong.py"'
+
+
+SERVICE=h2o2-api
+CONTAINER_INDEX=0
+PORT_INDEX=0
+bash ./scripts/aws/deploy_image_td_rollout.sh --tag 0911 --health-path /v1/health
+
+
+export PGHOST='h2o2-db-prd.c52yi26mgbl8.ap-northeast-2.rds.amazonaws.com'
+export PGPORT=5432
+export PGUSER='ai'
+export PGPASSWORD='ai'
+export PGDATABASE='ai'
+
+psql "host=$PGHOST port=$PGPORT dbname=$PGDATABASE user=$PGUSER sslmode=require" -c 'select now(), version();'
+
+nslookup h2o2-db-prd.c52yi26mgbl8.ap-northeast-2.rds.amazonaws.com
+
+
+TASK_ARN=$(aws ecs list-tasks --cluster h2o2-cluster --service-name h2o2-service --desired-status RUNNING --output text)
+aws ecs describe-tasks --cluster h2o2-cluster --tasks "$TASK_ARN" --query "tasks[0].attachments[0].details[?name=='networkInterfaceId'].value" --output text | xargs -I{} aws ec2 describe-network-interfaces --network-interface-ids {} --query "NetworkInterfaces[0].Groups[*].GroupId" --output text
+
+
+aws ecs update-service --cluster h2o2-cluster --service h2o2-service --force-new-deployment
+
+
+aws ecs execute-command --cluster $CLUSTER \
+    --task $TASK \
+    --container $CONTAINER_NAME \
+    --interactive \
+    --command "zsh"
+
+
+SERVICE="h2o2-service"   
+
+TASK=$(aws ecs list-tasks \
+  --cluster "$CLUSTER" \
+  --service-name "$SERVICE" \
+  --desired-status RUNNING \
+  --query 'taskArns[0]' \
+  --output text | tr -d '\r')
+
+echo "TASK=$TASK" 
+
+
