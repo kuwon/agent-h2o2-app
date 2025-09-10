@@ -309,9 +309,8 @@ def render_info_pane():
             customer_id=None,
             customer=None,
             customer_display=None,
-            accounts=[],
-            sim_params={        
-            }
+            accounts=list(),
+            sim_params=dict()
         )
         st.info("좌측에서 고객을 선택하면 상세 정보와 계좌가 표시됩니다.")
         return
@@ -379,26 +378,12 @@ def render_info_pane():
         _accounts_by_product_chart(selected_df)
 
     customer_py = {k: (v.item() if hasattr(v, "item") else v) for k, v in sel_row.to_dict().items()}
+    accounts_dict = selected_df.to_dict(orient="records")
     update_ctx(
         customer_id=selected_customer_id,
         customer=customer_py,
         customer_display=customer_display_kor,
-        accounts=selected_df.to_dict(orient="records"),
-        sim_params={        
-            "평가기준일":"2025-09-01",
-            "생년월일":customer_display_kor.get("생년월일", "19680215"),
-            "입사일":"2009-10-01",
-            "퇴직일":"2025-09-01",
-            "퇴직연금제도가입일":"2012-01-01",
-            "IRP가입일":"2014-05-01",
-            "연금개시일":"2027-12-31",
-            "과세제외_자기부담금":30_000_000,
-            "이연퇴직소득":500_000_000,
-            "그외":150_000_000 + 20_000_000,
-            "운용수익률":0.03,
-            "지급옵션":"기간확정형",
-            "지급기간_년":5,
-        }        
+        accounts=accounts_dict,       
     )
 
     with st.expander("컨텍스트 미리보기 (좌측, 선택 반영)", expanded=False):

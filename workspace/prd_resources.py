@@ -193,12 +193,13 @@ container_env = {
     # DB 연결정보(앱 코드가 이 키들을 읽는 전제)
     "DB_HOST": AwsReference(prd_db.get_db_endpoint),
     "DB_PORT": AwsReference(prd_db.get_db_port),
-    "DB_USER": AwsReference(prd_db.get_db_user),
-    "DB_PASS": AwsReference(prd_db.get_db_pass),
+    "DB_USER": AwsReference(prd_db.get_master_username),
+    "DB_PASS": AwsReference(prd_db.get_master_user_password),
     "DB_DATABASE": AwsReference(prd_db.get_db_name),
     # 대기/마이그 옵션
     "WAIT_FOR_DB": prd_db.enabled,
-    "MIGRATE_DB": prd_db.enabled,
+    #"MIGRATE_DB": prd_db.enabled,
+    "MIGRATE_DB": True,
     # (원하면 DATABASE_URL 한 방에 쓰기)
     #"DATABASE_URL": AwsReference(prd_db.get_databse_url),
 }

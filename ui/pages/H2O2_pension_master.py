@@ -10,6 +10,7 @@ from teams.pension_master import get_pension_master_team, run_pension_master
 from ui.css import CUSTOM_CSS, TITLE_SUBTITLE_CSS
 from ui.chat import render_chat_pane
 from ui.panes import render_left_pane
+from ui.panes.sim import render_sim_pane
 from ui.panes.context_builder import render_context_inline
 from ui.utils import (
     initialize_team_session_state,
@@ -180,14 +181,15 @@ async def body() -> None:
             render_context_inline(expanded=False)
 
         with tab_sim:
-            try:
-                from ui.panes.sim import render_sim_pane
-            except Exception:
-                st.info("시뮬레이션 Pane 모듈이 아직 없습니다. ui/panes/sim.py를 추가하세요.")
-            else:
-                ctx_obj = st.session_state.get("context")
-                render_sim_pane(ctx_obj)   # 현재 컨텍스트 기반
+            ctx_obj = st.session_state.get("context")
 
+            pension_accounts = [x for x in ctx_obj.get('accounts') if x.get("acnt_type") in ['DC', 'IRP', '연금저축'] ]
+            if len(pension_accounts) > 0:
+                #logger.info(f"pension_accounts: {pension_accounts}")
+                render_sim_pane(ctx_obj)   # 현재 컨텍스트 기반
+            else:
+                st.info("가지고 계신 DC/IRP/연금저축 계좌 중 **최소 하나는** 선택해주세요.")
+                
         with tab_chat:
             await render_chat_pane(team)
 

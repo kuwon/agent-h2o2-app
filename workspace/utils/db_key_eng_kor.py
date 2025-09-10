@@ -10,7 +10,7 @@ KMAP_ACCOUNTS = {
     "account_id":"종합계좌번호",
     "customer_id":"고객번호",
     "acnt_type":"계좌구분",
-    "acnt_prdt_cd":"계좌상품코드",
+    "prd_type_cd":"계좌상품코드",
     "acnt_bgn_dt":"계좌개설일자",
     "expd_dt":"만기일자",
     "etco_dt":"입사일자",
