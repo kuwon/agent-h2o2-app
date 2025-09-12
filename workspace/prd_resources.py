@@ -188,7 +188,8 @@ prd_ecs_cluster = EcsCluster(
 # Container ENV (앱에서 사용)
 container_env = {
     "RUNTIME_ENV": "prd",
-    "OPENAI_API_KEY": getenv("OPENAI_API_KEY"),
+    #"OPENAI_API_KEY": getenv("OPENAI_API_KEY"),
+    "OPENAI_API_KEY": prd_secret.get_secret_value("OPENAI_API_KEY"),
     "AGNO_MONITOR": "True",
     "AGNO_API_KEY": getenv("AGNO_API_KEY"),
     # DB 연결정보(앱 코드가 이 키들을 읽는 전제)
