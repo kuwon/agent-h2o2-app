@@ -12,7 +12,7 @@ import math
 from workspace.toolkits import pnsn_calculator
 
 from agno.utils.log import logger
-from ui.utils import _ctx_to_dict_any
+from ui.utils import _ctx_to_dict_any, update_ctx
 
 
 def date_input_optional(label: str, *, default=None, key: str, help: str | None = None,
@@ -73,46 +73,18 @@ def strptime_date_safe(val, fmt="%Y%m%d"):
     except ValueError:
         return None
 
-def _save_df_to_context(ctx_obj: Any, df: pd.DataFrame, *, path=("sim_param", "result"), key_name="df_capped"):
-    """df를 records dict로 바꿔 context(sim_param.result)에 저장.
-    다양한 컨텍스트 타입(dict/dataclass/세션)을 최대한 안전하게 처리한다.
+def _save_df_to_context(ctx_obj: Any, df: pd.DataFrame, *, path=("sim_params"), key_name="df_capped"):
+    """df를 records dict로 바꿔 context(sim_params)에 저장.
     """
     records = df.to_dict(orient="records")
+    #logger.info(f"records: {records}")
 
-    # 1) dataclass -> dict로 변환 후 세션에도 동기화 시도
-    try:
-        if is_dataclass(ctx_obj):
-            d = asdict(ctx_obj)
-        elif isinstance(ctx_obj, dict):
-            d = ctx_obj
-        else:
-            d = {}
-    except Exception:
-        d = {}
-
-    # 2) 경로 생성(sim_param -> result)
-    cur = d
-    for node in path[:-1]:
-        cur = cur.setdefault(node, {})
-    cur[path[-1]] = {key_name: records}
-
-    # 3) 가능한 경우 원본 ctx_obj에 반영 시도
-    try:
-        if hasattr(ctx_obj, path[0]):  # dataclass 속성
-            target = getattr(ctx_obj, path[0])
-            if isinstance(target, dict):
-                target[path[-1]] = {key_name: records}
-            elif hasattr(target, path[-1]):
-                setattr(target, path[-1], {key_name: records})
-    except Exception as e:
-        logger.error(str(e))
-
-    # 4) streamlit 세션에도 안전하게 백업
-    st.session_state.setdefault("sim_param", {})
-    st.session_state["sim_param"].setdefault("result", {})
-    st.session_state["sim_param"]["result"][key_name] = records
-
-    st.success("현재 df_capped가 context.sim_param.result에 저장되었습니다.")
+    # TODO: 결과를 좀 더 예쁘게 정리해서 담을 필요가 있음
+    # Agent 또는 Tool을 추가로 호출 
+    update_ctx(
+        sim_params=records
+    )
+    st.success("시뮬레이션 결과가 Context에 저장되었습니다.")
 
 
 def render_sim_pane(ctx_obj: Any):
@@ -579,6 +551,7 @@ def render_sim_pane(ctx_obj: Any):
                 hide_index=True,
             )
 
+            logger.info(f"df_capped: {df_capped}")
             # --- CSV와 컨텍스트 저장 버튼을 같은 레벨 + 크게 ---
             btn1, btn2 = st.columns([1, 1])
 
@@ -589,12 +562,16 @@ def render_sim_pane(ctx_obj: Any):
                     file_name="연금시뮬레이션_df_capped.csv",
                     mime="text/csv",
                     key="btn_csv_download",
-                    use_container_width=True,   # 버튼을 가로로 크게
+                    width="stretch"
                 )
 
             with btn2:
-                if st.button("💾 컨텍스트에 저장", key="btn_save_to_context", use_container_width=True):
-                    _save_df_to_context(ctx_obj, df_capped)
+                st.button(
+                    "💾 컨텍스트에 저장", 
+                    on_click=_save_df_to_context,
+                    args = (ctx_obj, df_capped),
+                    key="btn_save_to_context", 
+                    width="stretch")
 
         except Exception as e:
             st.error("시뮬레이션 중 오류가 발생했습니다.")
