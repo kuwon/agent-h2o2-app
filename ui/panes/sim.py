@@ -73,7 +73,7 @@ def strptime_date_safe(val, fmt="%Y%m%d"):
     except ValueError:
         return None
 
-def _save_df_to_context(ctx_obj: Any, df: pd.DataFrame, *, path=("sim_params"), key_name="df_capped"):
+def _save_df_to_context(dict_simul_result: Dict, df: pd.DataFrame, *, path=("sim_params"), key_name="df_capped"):
     """df를 records dict로 바꿔 context(sim_params)에 저장.
     """
     records = df.to_dict(orient="records")
@@ -82,7 +82,10 @@ def _save_df_to_context(ctx_obj: Any, df: pd.DataFrame, *, path=("sim_params"), 
     # TODO: 결과를 좀 더 예쁘게 정리해서 담을 필요가 있음
     # Agent 또는 Tool을 추가로 호출 
     update_ctx(
-        sim_params=records
+        sim_params={
+            "산출내역": dict_simul_result,
+            "산출내역 상세": records
+        }
     )
     st.success("시뮬레이션 결과가 Context에 저장되었습니다.")
 
@@ -439,9 +442,11 @@ def render_sim_pane(ctx_obj: Any):
                 params_lump["지급옵션"] = "일시금"
                 df_lump = pnsn_calculator.simulate_pension(**params_lump)
 
+            dict_simul_result=dict()
             # 입력값 요약 + 결과 출력
             with st.container(border=True):
                 st.markdown("##### 산출결과")
+                dict_simul_result['연금개시정보'] = dict()
                 m1, m2, m3, m4 = st.columns(4)
                 _auto_현재나이 = (평가기준일.year - 생년월일.year) - (
                     1
@@ -450,29 +455,38 @@ def render_sim_pane(ctx_obj: Any):
                     else 0
                 )
                 with m1:
+                    dict_simul_result['연금개시정보']['현재연령'] = _auto_현재나이
                     st.metric("현재연령", f"{_auto_현재나이} 세")
                 with m2:
+                    dict_simul_result['연금개시정보']['연금개시일자'] = 연금개시일
                     st.metric("연금개시일자", f"{연금개시일}")
                 with m3:
+                    dict_simul_result['연금개시정보']['연금개시연령'] = _auto_수령나이
                     st.metric("연금개시연령", f"{_auto_수령나이}세")
                 with m4:
+                    dict_simul_result['연금개시정보']['연금개시금액'] = f"{int(df_capped[df_capped['지급회차']==1]['지급전잔액'].values[0]):,}"
                     st.metric(
                         "연금개시금액",
                         f"{int(df_capped[df_capped['지급회차']==1]['지급전잔액'].values[0]):,} 원",
                     )
-
+                # 지급 옵션별 금액
+                dict_simul_result['연금수령정보'] = dict()
+                dict_simul_result['연금수령정보'][지급옵션] = dict()
                 if {"총세액", "실수령액", "실제지급액"}.issubset(df_capped.columns):
                     m1, m2, m3, m4 = st.columns(4)
                     with m1:
+                        dict_simul_result['연금수령정보'][지급옵션]['총 연금수령액'] =f"{int(df_capped['실제지급액'].sum()):,}"
                         st.metric(
                             "총 연금수령액",
                             f"{int(df_capped['실제지급액'].sum()):,} 원",
                         )
                     with m2:
+                        dict_simul_result['연금수령정보'][지급옵션]['총 세액 합계'] =f"{int(df_capped['총세액'].sum()):,}"
                         st.metric(
                             "총 세액 합계", f"{int(df_capped['총세액'].sum()):,} 원"
                         )
                     with m3:
+                        dict_simul_result['연금수령정보'][지급옵션]['실수령 합계'] =f"{int(df_capped['실수령액'].sum()):,}"
                         st.metric(
                             "실수령 합계", f"{int(df_capped['실수령액'].sum()):,} 원"
                         )
@@ -482,18 +496,23 @@ def render_sim_pane(ctx_obj: Any):
                         else 0
                     )
                     with m4:
+                        dict_simul_result['연금수령정보'][지급옵션]['실효세율'] =f"{eff_tax_rate:.1%}"
                         st.metric("실효세율", f"{eff_tax_rate:.1%}")
 
             with st.container(border=True):
+                dict_simul_result['연금수령정보']['일시금'] = dict()
                 st.markdown("##### (일시금 수령 시)")
                 m1, m2, m3, m4 = st.columns(4)
                 with m1:
+                    dict_simul_result['연금수령정보']['일시금']['총 연금수령액'] = f"{int(df_lump['실제지급액'].sum()):,}"
                     st.metric(
                         "총 연금수령액", f"{int(df_lump['실제지급액'].sum()):,} 원"
                     )
                 with m2:
+                    dict_simul_result['연금수령정보']['일시금']['총 세액 합계'] = f"{int(df_lump['총세액'].sum()):,}"
                     st.metric("총 세액 합계", f"{int(df_lump['총세액'].sum()):,} 원")
                 with m3:
+                    dict_simul_result['연금수령정보']['일시금']['실수령 합계'] = f"{int(df_lump['실수령액'].sum()):,}"
                     st.metric("실수령 합계", f"{int(df_lump['실수령액'].sum()):,} 원")
                 eff_tax_rate_lump = (
                     df_lump["총세액"].sum() / df_lump["실제지급액"].sum()
@@ -501,6 +520,7 @@ def render_sim_pane(ctx_obj: Any):
                     else 0
                 )
                 with m4:
+                    dict_simul_result['연금수령정보']['일시금']['실효세율'] = f"{eff_tax_rate_lump:.1%}"
                     st.metric("실효세율", f"{eff_tax_rate_lump:.1%}")
 
             st.markdown("##### 산출결과 내역")
@@ -569,7 +589,7 @@ def render_sim_pane(ctx_obj: Any):
                 st.button(
                     "💾 컨텍스트에 저장", 
                     on_click=_save_df_to_context,
-                    args = (ctx_obj, df_capped),
+                    args = (dict_simul_result, df_capped),
                     key="btn_save_to_context", 
                     width="stretch")
 
