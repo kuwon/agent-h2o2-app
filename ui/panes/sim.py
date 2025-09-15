@@ -3,8 +3,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-from typing import Any, Dict
-from dataclasses import asdict, is_dataclass
+from typing import Any, Dict, List, Optional
 from datetime import date as _date
 from datetime import datetime
 
@@ -13,6 +12,82 @@ from workspace.toolkits import pnsn_calculator
 
 from agno.utils.log import logger
 from ui.utils import _ctx_to_dict_any, update_ctx
+
+
+try:
+    from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
+    _HAS_AGGRID = True
+except Exception:
+    _HAS_AGGRID = False
+
+def _fmt_cur(v, suffix="원"):
+    if v is None:
+        return "-"
+    if isinstance(v, float) and math.isnan(v):
+        return "-"
+    try:
+        return f"{int(v):,}{suffix}"
+    except Exception:
+        return str(v)
+
+def _fmt_rate(v):
+    if v is None:
+        return "-"
+    try:
+        return f"{float(v):.2f}%"
+    except Exception:
+        return str(v)
+
+def _safe_get(d: Dict[str, Any], keys: List[str]) -> Optional[Any]:
+    # 주어진 후보 키들 중 존재하는 첫 값 반환
+    for k in keys:
+        if isinstance(d, dict) and k in d:
+            return d[k]
+    return None
+
+def _kv_rows(d: Dict[str, Any]) -> List[List[str]]:
+    # dict -> [[key, value], ...] (표 렌더용)
+    rows = []
+    for k, v in d.items():
+        rows.append([str(k), "-" if v is None else v])
+    return rows
+
+def _safe_get(d: Dict[str, Any], keys: List[str]) -> Optional[Any]:
+    for k in keys:
+        if isinstance(d, dict) and k in d:
+            return d[k]
+    return None
+
+def _kv_df(d: Dict[str, Any]) -> pd.DataFrame:
+    # dict -> "항목 / 값" 2열 표 (원본 키/값 그대로)
+    rows = [{"항목": str(k), "값": d[k]} for k in d.keys()]
+    return pd.DataFrame(rows)
+
+def _stringify(v: Any) -> str:
+    if v is None:
+        return "-"
+    if isinstance(v, (dict, list)):
+        try:
+            import json
+            return json.dumps(v, ensure_ascii=False)
+        except Exception:
+            return str(v)
+    if isinstance(v, pd.DataFrame):
+        return "(표)"
+    return str(v)
+
+def _two_way_compare_df(sel_label: str, sel_dict: Dict[str, Any],
+                        lump_label: str, lump_dict: Dict[str, Any]) -> pd.DataFrame:
+    # 두 dict의 키 합집합을 행으로, 열은 [선택옵션 레이블, 일시불 레이블]
+    all_keys = list(dict.fromkeys(list(sel_dict.keys()) + list(lump_dict.keys())))
+    rows = []
+    for k in all_keys:
+        rows.append({
+            "항목": str(k),
+            sel_label: _stringify(sel_dict.get(k)),
+            lump_label: _stringify(lump_dict.get(k)),
+        })
+    return pd.DataFrame(rows)
 
 
 def date_input_optional(label: str, *, default=None, key: str, help: str | None = None,
@@ -51,7 +126,6 @@ def style_dataframe(df: pd.DataFrame):
         fmt[col] = "{:,.0f}"
 
     return df.style.format(fmt)
-
 
 
 def strptime_date_safe(val, fmt="%Y%m%d"):
@@ -112,7 +186,7 @@ def render_sim_pane(ctx_obj: Any):
         _type = _parts[0] if len(_parts) > 1 else ""
         # 여기서 필요하면 추가 메타(개설일 등)를 DB/df에서 조회해 첨부
         st.caption(f"선택 계좌: **{_acc_no}** · 유형: **{_type}**")
-        st.divider()
+        #st.divider()
     
     sel_account = [x for x in ctx.get("accounts") if x.get('account_id') == sel.split(' ')[1]][0]
 
@@ -170,241 +244,245 @@ def render_sim_pane(ctx_obj: Any):
             st.session_state.pop(f"{k}_{prev_base_key}_date", None)
     st.session_state["_prev_base_key"] = base_key
     # ── 입력 폼 ─────────────────────────────────────────────────────────
-    st.subheader("기본 정보(날짜)")
-    d1, d2, d3 = st.columns(3)
-    with d1:
-        평가기준일 = st.date_input(
-            "평가기준일", value=평가기준일, key=f"평가기준일_{base_key}"
-        )
-        생년월일 = st.date_input("생년월일", value=생년월일, key=f"생년월일_{base_key}")
-        퇴직연금제도가입일 = st.date_input(
-            "퇴직연금 제도가입일",
-            value=제도가입일,
-            key=f"제도가입일_{base_key}",
-        )
-    with d2:
-        입사일자 = date_input_optional(
-            "입사일자",
-            default=입사일자,
-            min_value=_date(1980, 1, 1),
-            max_value=평가기준일,
-            key=f"입사일_{base_key}",
-            help="퇴직소득이 없으면 '없음' 체크",
-        )
-
-        퇴직일자 = date_input_optional(
-            "퇴직일자",
-            default=퇴직일자,
-            min_value=_date(1980, 1, 1),
-            max_value=_date(2050, 1, 1),
-            key=f"퇴직일_{base_key}",
-            help="퇴직소득이 없으면 '없음' 체크",
-        )
-
-    with d3:
-        # ── 자동 산출 ────────────────────────────────────────────────────
-        _연금수령가능일_dt = pnsn_calculator.calc_연금수령가능일(
-            생년월일=생년월일, 제도가입일=제도가입일, 퇴직일자=퇴직일자
-        )
-
-        st.date_input(
-            "연금수령가능일 (자동 계산)",
-            value=_연금수령가능일_dt,
-            disabled=True,
-            help="퇴직일, 55세, 제도가입일+5년 중 가장 늦은 날",
-            key=f"연금수령가능일_{base_key}",
-        )
-        연금개시일 = st.date_input(
-            "연금개시일(연금수령가능일 이후)",
-            value=max(_연금수령가능일_dt, 평가기준일),
-            min_value=_연금수령가능일_dt,
-            max_value=_date(2050, 1, 1),
-            key=f"연금개시일_{base_key}",
-        )
-        운용수익률 = st.number_input(
-            "연 운용수익률(예: 0.03=3%)",
-            value=운용수익률,
-            step=0.005,
-            format="%.3f",
-            key=f"운용수익률_{base_key}",
-        )
-    # ── 요약 표시 ────────────────────────────────────────────────────
-    b1, b2, b3 = st.columns(3)
-    with b1:
-        # 개시 나이(사용자 조정 가능)
-        _auto_수령나이 = (연금개시일.year - 생년월일.year) - (
-            1
-            if (연금개시일.month, 연금개시일.day) < (생년월일.month, 생년월일.day)
-            else 0
-        )
-        st.caption("연금개시 연령: " f"{_auto_수령나이}세")
-    with b2:
-        # 근속년수(사용자 조정 가능)
-        if 퇴직일자 is not None and 입사일자 is not None:
-            근속월수 = (퇴직일자.year - 입사일자.year) * 12 + (
-                퇴직일자.month - 입사일자.month
+    with st.container(border=True):
+        st.subheader("기본 정보(날짜)")
+        d1, d2, d3 = st.columns(3)
+        with d1:
+            평가기준일 = st.date_input(
+                "평가기준일", value=평가기준일, key=f"평가기준일_{base_key}"
             )
-            if 퇴직일자.day < 입사일자.day:
-                근속월수 -= 1
-            _auto_근속년수 = math.ceil((근속월수 + 1) / 12)
-        else:
-            _auto_근속년수 = 0
-        st.caption("근속년수: " f"{_auto_근속년수}년")
-    with b3:
-        _auto_연금수령연차 = max(0, 연금개시일.year - _연금수령가능일_dt.year) + (
-            6 if 퇴직연금제도가입일 < _date(2013, 1, 1) else 1
-        )
-        st.caption("연금개시일 연금수령연차: " f"{_auto_연금수령연차}")
-
-    st.subheader("연금소득 재원(원)")
-    a1, a2, a3, a4 = st.columns(4)
-    with a1:
-        과세제외_자기부담금 = st.number_input(
-            "과세제외 자기부담금", value=과세제외_자기부담금, step=100_000
-        )
-        st.caption(f"비과세: {int(과세제외_자기부담금):,} 원")
-    with a2:
-        이연퇴직소득 = st.number_input(
-            "이연퇴직소득(= IRP 입금 퇴직금)", value=이연퇴직소득, step=1_000_000
-        )
-        st.caption(f"퇴직소득: {int(이연퇴직소득):,} 원")
-    with a3:
-        세액공제자기부담금 = st.number_input(
-            "세액공제자기부담금", value=세액공제자기부담금, step=100_000
-        )
-        st.caption(f"세액공제: {int(세액공제자기부담금):,} 원")
-    with a4:
-        운용손익 = st.number_input("운용손익", value=운용손익, step=100_000)
-        st.caption(f"운용손익: {int(운용손익):,} 원")
-    # ── 우선순위: DB > 계산기 > 수동 ─────────────────────────────────────────
-    if 이연퇴직소득세 is not None and 이연퇴직소득세 > 0:
-        _default_tax_amt = int(이연퇴직소득세)
-        _default_source = "db"
-    else:
-        _calc = pnsn_calculator.calc_퇴직소득세(
-            근속년수=_auto_근속년수, 이연퇴직소득=이연퇴직소득
-        )
-        _default_tax_amt = int(_calc["퇴직소득산출세액"])
-        _default_source = "calc"
-
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        use_manual_tax_amount = st.checkbox(
-            "퇴직소득세액 직접입력", key="use_manual_tax_amount"
-        )
-
-    # 수동 입력 기본값을 캡션 값과 동기화 (꺼져 있을 때는 항상 동기화)
-    if "manual_tax_amount" not in st.session_state:
-        st.session_state["manual_tax_amount"] = _default_tax_amt
-    elif not st.session_state.get("use_manual_tax_amount", False):
-        st.session_state["manual_tax_amount"] = _default_tax_amt
-
-    with c2:
-        manual_tax_amount = st.number_input(
-            "퇴직소득 산출세액(원)",
-            # value=st.session_state[
-            #     "manual_tax_amount"
-            # ],  # ← 캡션 값이 초기값으로 들어감
-            step=1,
-            key="manual_tax_amount",
-            disabled=not use_manual_tax_amount,
-            help="수동 입력을 켜면 편집할 수 있습니다.",
-        )
-
-    # 최종 적용 값 (우선순위: DB > 계산기 > 수동)
-    if _default_source == "db":
-        _tax_amt = _default_tax_amt
-        source = "db"
-    else:
-        if not use_manual_tax_amount:
-            _tax_amt = _default_tax_amt  # 계산기 값
-            source = "calc"
-        else:
-            _tax_amt = int(st.session_state["manual_tax_amount"])
-            source = "manual"
-
-    _tax_rate = (
-        (_tax_amt / 이연퇴직소득)
-        if (이연퇴직소득 is not None and 이연퇴직소득 > 0)
-        else 0.0
-    )
-
-    calc_퇴직소득세 = {
-        "퇴직소득산출세액": _tax_amt,
-        "퇴직소득세율": _tax_rate,
-        "source": source,
-    }
-
-    # ── 경고: 계산기 산출 세액=0 이고 근속년수=0 인 경우(이연퇴직소득 > 0일 때만) ──
-    if (
-        source == "calc"  # 계산기 경로일 때만
-        and _tax_amt == 0  # 계산기 결과 세액 0
-        and 이연퇴직소득 is not None
-        and 이연퇴직소득 > 0  # 과세 대상이 있을 때만 경고
-        and _auto_근속년수 == 0  # 근속년수 입력 누락 추정
-    ):
-        missing = []
-        if 입사일자 is None:
-            missing.append("입사일")
-        if 퇴직일자 is None:
-            missing.append("퇴직일")
-
-        if missing:
-            st.warning(
-                f"자동 산출 이연퇴직소득세가 0원이며 근속년수가 0년입니다. "
-                f"{', '.join(missing)}을(를) 설정하세요.",
-                icon="⚠️",
+            생년월일 = st.date_input("생년월일", value=생년월일, key=f"생년월일_{base_key}")
+            퇴직연금제도가입일 = st.date_input(
+                "퇴직연금 제도가입일",
+                value=제도가입일,
+                key=f"제도가입일_{base_key}",
             )
-        else:
-            st.warning(
-                "자동 산출 이연퇴직소득세가 0원이며 근속년수가 0년입니다. "
-                "입사일/퇴직일을 확인하세요.",
-                icon="⚠️",
+        with d2:
+            입사일자 = date_input_optional(
+                "입사일자",
+                default=입사일자,
+                min_value=_date(1980, 1, 1),
+                max_value=평가기준일,
+                key=f"입사일_{base_key}",
+                help="퇴직소득이 없으면 '없음' 체크",
             )
 
-    st.caption(
-        f"총평가금액(= 과세제외 자기부담금 + 이연퇴직소득 + 세액공제자기부담금 + 운용손익)): "
-        f"{과세제외_자기부담금 + 이연퇴직소득 + 세액공제자기부담금 + 운용손익:,} 원"
-    )
-    label = {"db": "Wink", "calc": "자동계산", "manual": "직접입력"}
-    st.caption(f"퇴직소득세율({label[source]}): {calc_퇴직소득세['퇴직소득세율']:.1%}")
+            퇴직일자 = date_input_optional(
+                "퇴직일자",
+                default=퇴직일자,
+                min_value=_date(1980, 1, 1),
+                max_value=_date(2050, 1, 1),
+                key=f"퇴직일_{base_key}",
+                help="퇴직소득이 없으면 '없음' 체크",
+            )
 
-    st.caption(
-        f"퇴직소득 산출세액({label[source]}): {calc_퇴직소득세['퇴직소득산출세액']:,} 원"
-    )
+        with d3:
+            # ── 자동 산출 ────────────────────────────────────────────────────
+            _연금수령가능일_dt = pnsn_calculator.calc_연금수령가능일(
+                생년월일=생년월일, 제도가입일=제도가입일, 퇴직일자=퇴직일자
+            )
 
-    st.subheader("지급 옵션")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        지급옵션 = st.selectbox(
-            "지급옵션",
-            ["기간확정형", "금액확정형", "한도수령", "최소수령", "일시금"],
-            index=0,
-            key="지급옵션",
-        )
+            st.date_input(
+                "연금수령가능일 (자동 계산)",
+                value=_연금수령가능일_dt,
+                disabled=True,
+                help="퇴직일, 55세, 제도가입일+5년 중 가장 늦은 날",
+                key=f"연금수령가능일_{base_key}",
+            )
+            연금개시일 = st.date_input(
+                "연금개시일(연금수령가능일 이후)",
+                value=max(_연금수령가능일_dt, 평가기준일),
+                min_value=_연금수령가능일_dt,
+                max_value=_date(2050, 1, 1),
+                key=f"연금개시일_{base_key}",
+            )
+            운용수익률 = st.number_input(
+                "연 운용수익률(예: 0.03=3%)",
+                value=운용수익률,
+                step=0.005,
+                format="%.3f",
+                key=f"운용수익률_{base_key}",
+            )
+        # ── 요약 표시 ────────────────────────────────────────────────────
+        b1, b2, b3 = st.columns(3)
+        with b1:
+            # 개시 나이(사용자 조정 가능)
+            _auto_수령나이 = (연금개시일.year - 생년월일.year) - (
+                1
+                if (연금개시일.month, 연금개시일.day) < (생년월일.month, 생년월일.day)
+                else 0
+            )
+            st.caption("연금개시 연령: " f"{_auto_수령나이}세")
+        with b2:
+            # 근속년수(사용자 조정 가능)
+            if 퇴직일자 is not None and 입사일자 is not None:
+                근속월수 = (퇴직일자.year - 입사일자.year) * 12 + (
+                    퇴직일자.month - 입사일자.month
+                )
+                if 퇴직일자.day < 입사일자.day:
+                    근속월수 -= 1
+                _auto_근속년수 = math.ceil((근속월수 + 1) / 12)
+            else:
+                _auto_근속년수 = 0
+            st.caption("근속년수: " f"{_auto_근속년수}년")
+        with b3:
+            _auto_연금수령연차 = max(0, 연금개시일.year - _연금수령가능일_dt.year) + (
+                6 if 퇴직연금제도가입일 < _date(2013, 1, 1) else 1
+            )
+            st.caption("연금개시일 연금수령연차: " f"{_auto_연금수령연차}")
 
-    if 지급옵션 == "기간확정형":
+        st.subheader("연금소득 재원(원)")
+        a1, a2, a3, a4 = st.columns(4)
+        with a1:
+            과세제외_자기부담금 = st.number_input(
+                "과세제외 자기부담금", value=과세제외_자기부담금, step=100_000
+            )
+            st.caption(f"비과세: {int(과세제외_자기부담금):,} 원")
+        with a2:
+            이연퇴직소득 = st.number_input(
+                "이연퇴직소득(= IRP 입금 퇴직금)", value=이연퇴직소득, step=1_000_000
+            )
+            st.caption(f"퇴직소득: {int(이연퇴직소득):,} 원")
+        with a3:
+            세액공제자기부담금 = st.number_input(
+                "세액공제자기부담금", value=세액공제자기부담금, step=100_000
+            )
+            st.caption(f"세액공제: {int(세액공제자기부담금):,} 원")
+        with a4:
+            운용손익 = st.number_input("운용손익", value=운용손익, step=100_000)
+            st.caption(f"운용손익: {int(운용손익):,} 원")
+        # ── 우선순위: DB > 계산기 > 수동 ─────────────────────────────────────────
+        if 이연퇴직소득세 is not None and 이연퇴직소득세 > 0:
+            _default_tax_amt = int(이연퇴직소득세)
+            _default_source = "db"
+        else:
+            _calc = pnsn_calculator.calc_퇴직소득세(
+                근속년수=_auto_근속년수, 이연퇴직소득=이연퇴직소득
+            )
+            _default_tax_amt = int(_calc["퇴직소득산출세액"])
+            _default_source = "calc"
+
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            use_manual_tax_amount = st.checkbox(
+                "퇴직소득세액 직접입력", key="use_manual_tax_amount"
+            )
+
+        # 수동 입력 기본값을 캡션 값과 동기화 (꺼져 있을 때는 항상 동기화)
+        if "manual_tax_amount" not in st.session_state:
+            st.session_state["manual_tax_amount"] = _default_tax_amt
+        elif not st.session_state.get("use_manual_tax_amount", False):
+            st.session_state["manual_tax_amount"] = _default_tax_amt
+
         with c2:
-            지급기간_년 = st.number_input(
-                "지급기간_년(필수)",
-                min_value=1,
-                value=5,
+            manual_tax_amount = st.number_input(
+                "퇴직소득 산출세액(원)",
+                # value=st.session_state[
+                #     "manual_tax_amount"
+                # ],  # ← 캡션 값이 초기값으로 들어감
                 step=1,
+                key="manual_tax_amount",
+                disabled=not use_manual_tax_amount,
+                help="수동 입력을 켜면 편집할 수 있습니다.",
             )
-        수령금액_년 = None
 
-    elif 지급옵션 == "금액확정형":
-        with c2:
-            수령금액_년 = st.number_input(
-                "수령금액_년(필수, 원)", min_value=1, value=12_000_000, step=100_000
+        # 최종 적용 값 (우선순위: DB > 계산기 > 수동)
+        if _default_source == "db":
+            _tax_amt = _default_tax_amt
+            source = "db"
+        else:
+            if not use_manual_tax_amount:
+                _tax_amt = _default_tax_amt  # 계산기 값
+                source = "calc"
+            else:
+                _tax_amt = int(st.session_state["manual_tax_amount"])
+                source = "manual"
+
+        _tax_rate = (
+            (_tax_amt / 이연퇴직소득)
+            if (이연퇴직소득 is not None and 이연퇴직소득 > 0)
+            else 0.0
+        )
+
+        calc_퇴직소득세 = {
+            "퇴직소득산출세액": _tax_amt,
+            "퇴직소득세율": _tax_rate,
+            "source": source,
+        }
+
+        # ── 경고: 계산기 산출 세액=0 이고 근속년수=0 인 경우(이연퇴직소득 > 0일 때만) ──
+        if (
+            source == "calc"  # 계산기 경로일 때만
+            and _tax_amt == 0  # 계산기 결과 세액 0
+            and 이연퇴직소득 is not None
+            and 이연퇴직소득 > 0  # 과세 대상이 있을 때만 경고
+            and _auto_근속년수 == 0  # 근속년수 입력 누락 추정
+        ):
+            missing = []
+            if 입사일자 is None:
+                missing.append("입사일")
+            if 퇴직일자 is None:
+                missing.append("퇴직일")
+
+            if missing:
+                st.warning(
+                    f"자동 산출 이연퇴직소득세가 0원이며 근속년수가 0년입니다. "
+                    f"{', '.join(missing)}을(를) 설정하세요.",
+                    icon="⚠️",
+                )
+            else:
+                st.warning(
+                    "자동 산출 이연퇴직소득세가 0원이며 근속년수가 0년입니다. "
+                    "입사일/퇴직일을 확인하세요.",
+                    icon="⚠️",
+                )
+
+        st.caption(
+            f"총평가금액(= 과세제외 자기부담금 + 이연퇴직소득 + 세액공제자기부담금 + 운용손익)): "
+            f"{과세제외_자기부담금 + 이연퇴직소득 + 세액공제자기부담금 + 운용손익:,} 원"
+        )
+        label = {"db": "Wink", "calc": "자동계산", "manual": "직접입력"}
+        st.caption(f"퇴직소득세율({label[source]}): {calc_퇴직소득세['퇴직소득세율']:.1%}")
+
+        st.caption(
+            f"퇴직소득 산출세액({label[source]}): {calc_퇴직소득세['퇴직소득산출세액']:,} 원"
+        )
+
+        st.subheader("지급 옵션")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            지급옵션 = st.selectbox(
+                "지급옵션",
+                ["기간확정형", "금액확정형", "한도수령", "최소수령", "일시금"],
+                index=0,
+                key="지급옵션",
             )
-        지급기간_년 = None
 
-    else:
-        # 한도수령, 최소수령일 경우
-        지급기간_년, 수령금액_년 = None, None
+        if 지급옵션 == "기간확정형":
+            with c2:
+                지급기간_년 = st.number_input(
+                    "지급기간_년(필수)",
+                    min_value=1,
+                    value=5,
+                    step=1,
+                )
+            수령금액_년 = None
 
-    submitted_option = st.button("시뮬레이션 실행")    
+        elif 지급옵션 == "금액확정형":
+            with c2:
+                수령금액_년 = st.number_input(
+                    "수령금액_년(필수, 원)", min_value=1, value=12_000_000, step=100_000
+                )
+            지급기간_년 = None
+
+        else:
+            # 한도수령, 최소수령일 경우
+            지급기간_년, 수령금액_년 = None, None
+
+    ##----------------
+    ## 시뮬레이션 수행
+    ##----------------
+    submitted_option = st.button("시뮬레이션 실행", width="stretch")    
     
     if submitted_option:
         params = dict(
@@ -442,12 +520,14 @@ def render_sim_pane(ctx_obj: Any):
                 params_lump["지급옵션"] = "일시금"
                 df_lump = pnsn_calculator.simulate_pension(**params_lump)
 
+            # 결과 저장용 - context에도 전달
             dict_simul_result=dict()
+            
             # 입력값 요약 + 결과 출력
             with st.container(border=True):
-                st.markdown("##### 산출결과")
+                st.markdown("#### 연금 개시 정보")
                 dict_simul_result['연금개시정보'] = dict()
-                m1, m2, m3, m4 = st.columns(4)
+                m1, m2 = st.columns(2) 
                 _auto_현재나이 = (평가기준일.year - 생년월일.year) - (
                     1
                     if (연금개시일.month, 연금개시일.day)
@@ -460,6 +540,7 @@ def render_sim_pane(ctx_obj: Any):
                 with m2:
                     dict_simul_result['연금개시정보']['연금개시일자'] = 연금개시일
                     st.metric("연금개시일자", f"{연금개시일}")
+                m3, m4 = st.columns(2)                    
                 with m3:
                     dict_simul_result['연금개시정보']['연금개시연령'] = _auto_수령나이
                     st.metric("연금개시연령", f"{_auto_수령나이}세")
@@ -469,59 +550,48 @@ def render_sim_pane(ctx_obj: Any):
                         "연금개시금액",
                         f"{int(df_capped[df_capped['지급회차']==1]['지급전잔액'].values[0]):,} 원",
                     )
-                # 지급 옵션별 금액
-                dict_simul_result['연금수령정보'] = dict()
-                dict_simul_result['연금수령정보'][지급옵션] = dict()
-                if {"총세액", "실수령액", "실제지급액"}.issubset(df_capped.columns):
-                    m1, m2, m3, m4 = st.columns(4)
-                    with m1:
-                        dict_simul_result['연금수령정보'][지급옵션]['총 연금수령액'] =f"{int(df_capped['실제지급액'].sum()):,}"
-                        st.metric(
-                            "총 연금수령액",
-                            f"{int(df_capped['실제지급액'].sum()):,} 원",
-                        )
-                    with m2:
-                        dict_simul_result['연금수령정보'][지급옵션]['총 세액 합계'] =f"{int(df_capped['총세액'].sum()):,}"
-                        st.metric(
-                            "총 세액 합계", f"{int(df_capped['총세액'].sum()):,} 원"
-                        )
-                    with m3:
-                        dict_simul_result['연금수령정보'][지급옵션]['실수령 합계'] =f"{int(df_capped['실수령액'].sum()):,}"
-                        st.metric(
-                            "실수령 합계", f"{int(df_capped['실수령액'].sum()):,} 원"
-                        )
-                    eff_tax_rate = (
-                        df_capped["총세액"].sum() / df_capped["실제지급액"].sum()
-                        if df_capped["실제지급액"].sum() > 0
-                        else 0
-                    )
-                    with m4:
-                        dict_simul_result['연금수령정보'][지급옵션]['실효세율'] =f"{eff_tax_rate:.1%}"
-                        st.metric("실효세율", f"{eff_tax_rate:.1%}")
 
-            with st.container(border=True):
-                dict_simul_result['연금수령정보']['일시금'] = dict()
-                st.markdown("##### (일시금 수령 시)")
-                m1, m2, m3, m4 = st.columns(4)
-                with m1:
-                    dict_simul_result['연금수령정보']['일시금']['총 연금수령액'] = f"{int(df_lump['실제지급액'].sum()):,}"
-                    st.metric(
-                        "총 연금수령액", f"{int(df_lump['실제지급액'].sum()):,} 원"
-                    )
-                with m2:
-                    dict_simul_result['연금수령정보']['일시금']['총 세액 합계'] = f"{int(df_lump['총세액'].sum()):,}"
-                    st.metric("총 세액 합계", f"{int(df_lump['총세액'].sum()):,} 원")
-                with m3:
-                    dict_simul_result['연금수령정보']['일시금']['실수령 합계'] = f"{int(df_lump['실수령액'].sum()):,}"
-                    st.metric("실수령 합계", f"{int(df_lump['실수령액'].sum()):,} 원")
-                eff_tax_rate_lump = (
-                    df_lump["총세액"].sum() / df_lump["실제지급액"].sum()
-                    if df_lump["실제지급액"].sum() > 0
-                    else 0
-                )
-                with m4:
-                    dict_simul_result['연금수령정보']['일시금']['실효세율'] = f"{eff_tax_rate_lump:.1%}"
-                    st.metric("실효세율", f"{eff_tax_rate_lump:.1%}")
+            if {"총세액", "실수령액", "실제지급액"}.issubset(df_capped.columns):
+                with st.container(border=True):
+                    # 지급 옵션별 금액
+                    dict_simul_result['연금수령정보'] = dict()
+                    dict_simul_result['연금수령정보'][지급옵션] = dict()
+                    dict_simul_result['연금수령정보'][지급옵션]['총 연금수령액'] =f"{int(df_capped['실제지급액'].sum()):,}"
+                    dict_simul_result['연금수령정보'][지급옵션]['총 세액 합계'] =f"{int(df_capped['총세액'].sum()):,}"
+                    dict_simul_result['연금수령정보'][지급옵션]['실수령 합계'] =f"{int(df_capped['실수령액'].sum()):,}"
+                    eff_tax_rate = (
+                            df_capped["총세액"].sum() / df_capped["실제지급액"].sum()
+                            if df_capped["실제지급액"].sum() > 0
+                            else 0
+                        )
+                    dict_simul_result['연금수령정보'][지급옵션]['실효세율'] =f"{eff_tax_rate:.1%}"
+
+                    st.markdown("#### 연금 수령 정보")
+
+                    if 지급옵션 == "일시금":
+                        # 두 컬럼이 사실상 같은 시나리오일 때 → 단일 표시 + 안내
+                        st.info("선택한 지급옵션이 '일시불(일시금)'과 동일합니다. 단일 시나리오로 표시합니다.")
+                        single_df = _kv_df(dict_simul_result['연금수령정보'][지급옵션])  # 또는 lump_dict 동일
+                        st.dataframe(single_df, use_container_width=True)
+                    else:
+                        # 비교의 의미가 있을 때만 일시금 케이스를 추가
+                        dict_simul_result['연금수령정보']['일시금'] = dict()
+                        dict_simul_result['연금수령정보']['일시금']['총 연금수령액'] = f"{int(df_lump['실제지급액'].sum()):,}"
+                        dict_simul_result['연금수령정보']['일시금']['총 세액 합계'] = f"{int(df_lump['총세액'].sum()):,}"
+                        dict_simul_result['연금수령정보']['일시금']['실수령 합계'] = f"{int(df_lump['실수령액'].sum()):,}"
+                        eff_tax_rate_lump = (
+                            df_lump["총세액"].sum() / df_lump["실제지급액"].sum()
+                            if df_lump["실제지급액"].sum() > 0
+                            else 0
+                        )
+                        dict_simul_result['연금수령정보']['일시금']['실효세율'] = f"{eff_tax_rate_lump:.1%}"                        
+                        # 정상 2-way 비교표
+                        compare_df = _two_way_compare_df(지급옵션, 
+                                                        dict_simul_result['연금수령정보'][지급옵션], 
+                                                        '일시금', 
+                                                        dict_simul_result['연금수령정보']['일시금'])
+                        st.dataframe(compare_df, width="stretch", hide_index=True)
+
 
             st.markdown("##### 산출결과 내역")
             # 1) 컬럼 생성
@@ -571,7 +641,7 @@ def render_sim_pane(ctx_obj: Any):
                 hide_index=True,
             )
 
-            logger.info(f"df_capped: {df_capped}")
+            
             # --- CSV와 컨텍스트 저장 버튼을 같은 레벨 + 크게 ---
             btn1, btn2 = st.columns([1, 1])
 
