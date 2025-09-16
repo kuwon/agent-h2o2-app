@@ -233,3 +233,4 @@ TASK=$(aws ecs list-tasks \
 echo "TASK=$TASK" 
 
 
+timeout 5 bash -lc 'cat < /dev/null > /dev/tcp/h2o2-db-prd.c52yi26mgbl8.ap-northeast-2.rds.amazonaws.com/5432' && echo "OPEN" || echo "BLOCKED"

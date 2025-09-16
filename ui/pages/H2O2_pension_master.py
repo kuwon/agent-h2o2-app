@@ -1,8 +1,9 @@
 import asyncio
-
 import nest_asyncio
+
 import streamlit as st
-from agno.team import Team
+from dataclasses import is_dataclass, asdict
+
 from agno.tools.streamlit.components import check_password
 from agno.utils.log import logger
 
@@ -16,7 +17,7 @@ from ui.utils import (
     initialize_team_session_state,
     selected_model,
 )
-from ui.state import PensionContext,SESSION_DEFAULTS
+from ui.state import SESSION_DEFAULTS
 from ui.utils import inject_global_styles, ensure_session_defaults
 
 nest_asyncio.apply()
@@ -183,7 +184,13 @@ async def body() -> None:
         with tab_sim:
             ctx_obj = st.session_state.get("context")
 
-            pension_accounts = [x for x in ctx_obj.get('accounts') if x.get("acnt_type") in ['DC', 'IRP', '연금저축'] ]
+            if is_dataclass(ctx_obj):
+                _ctx = asdict(ctx_obj)
+            else:
+                _ctx = ctx_obj
+            accounts = _ctx.get('accounts', []) if isinstance(_ctx, dict) else getattr(ctx_obj, 'accounts', []) or []
+            pension_accounts = [x for x in accounts if x.get("acnt_type") in ['DC','IRP','연금저축']]
+
             if len(pension_accounts) > 0:
                 #logger.info(f"pension_accounts: {pension_accounts}")
                 render_sim_pane(ctx_obj)   # 현재 컨텍스트 기반

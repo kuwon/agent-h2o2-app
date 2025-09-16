@@ -62,53 +62,61 @@ def _log_debug(enabled: bool, title: str, payload):
 
 
 def _load_customers(sess, q: Optional[str] = None, limit: int = 5000) -> pd.DataFrame:
-    stmt = select(
-        CustomersTable.customer_id,
-        CustomersTable.customer_name,
-        CustomersTable.brth_dt,
-        CustomersTable.tot_asst_amt,
-        CustomersTable.cust_ivst_icln_grad_cd,
-    ).limit(limit)
+    try:
+        stmt = select(
+            CustomersTable.customer_id,
+            CustomersTable.customer_name,
+            CustomersTable.brth_dt,
+            CustomersTable.tot_asst_amt,
+            CustomersTable.cust_ivst_icln_grad_cd,
+        ).limit(limit)
 
-    if q:
-        if hasattr(CustomersTable, "customer_name"):
-            stmt = stmt.where(CustomersTable.customer_name.ilike(f"%{q}%"))
+        if q:
+            if hasattr(CustomersTable, "customer_name"):
+                stmt = stmt.where(CustomersTable.customer_name.ilike(f"%{q}%"))
 
-    rows = sess.execute(stmt).all()
-    df = pd.DataFrame(rows, columns=[x for x in KMAP_CUSTOMERS.keys()])
-    if "customer_id" in df.columns:
-        df["customer_id"] = df["customer_id"].astype(str)
-    return df
+        rows = sess.execute(stmt).all()
+        df = pd.DataFrame(rows, columns=[x for x in KMAP_CUSTOMERS.keys()])
+        if "customer_id" in df.columns:
+            df["customer_id"] = df["customer_id"].astype(str)
+        return df
+    except Exception:
+        sess.rollback()
+        raise
 
 
 def _load_accounts(sess, customer_id: Optional[str], limit: int = 500) -> pd.DataFrame:
-    stmt = select(
-        AccountsTable.account_id,
-        AccountsTable.customer_id,
-        AccountsTable.acnt_type,
-        AccountsTable.prd_type_cd,
-        AccountsTable.acnt_bgn_dt,
-        AccountsTable.expd_dt,
-        AccountsTable.etco_dt,
-        AccountsTable.rtmt_dt,
-        AccountsTable.midl_excc_dt,
-        AccountsTable.acnt_evlu_amt,
-        AccountsTable.copt_year_pymt_amt,
-        AccountsTable.other_txtn_ecls_amt,
-        AccountsTable.rtmt_incm_amt,
-        AccountsTable.icdd_amt,
-        AccountsTable.user_almt_amt,
-        AccountsTable.sbsr_almt_amt,
-        AccountsTable.utlz_erng_amt,
-        AccountsTable.dfr_rtmt_taxa,
-    ).limit(limit)
+    try:
+        stmt = select(
+            AccountsTable.account_id,
+            AccountsTable.customer_id,
+            AccountsTable.acnt_type,
+            AccountsTable.prd_type_cd,
+            AccountsTable.acnt_bgn_dt,
+            AccountsTable.expd_dt,
+            AccountsTable.etco_dt,
+            AccountsTable.rtmt_dt,
+            AccountsTable.midl_excc_dt,
+            AccountsTable.acnt_evlu_amt,
+            AccountsTable.copt_year_pymt_amt,
+            AccountsTable.other_txtn_ecls_amt,
+            AccountsTable.rtmt_incm_amt,
+            AccountsTable.icdd_amt,
+            AccountsTable.user_almt_amt,
+            AccountsTable.sbsr_almt_amt,
+            AccountsTable.utlz_erng_amt,
+            AccountsTable.dfr_rtmt_taxa,
+        ).limit(limit)
 
-    if customer_id is not None:
-        stmt = stmt.where(AccountsTable.customer_id == customer_id)
+        if customer_id is not None:
+            stmt = stmt.where(AccountsTable.customer_id == customer_id)
 
-    rows = sess.execute(stmt).all()
-    df = pd.DataFrame(rows, columns=[x for x in KMAP_ACCOUNTS.keys()])
-    return df
+        rows = sess.execute(stmt).all()
+        df = pd.DataFrame(rows, columns=[x for x in KMAP_ACCOUNTS.keys()])
+        return df
+    except Exception:
+        sess.rollback()
+        raise
 
 
 # --------------------------------------------------------------------------------------
@@ -281,6 +289,8 @@ def render_info_pane():
         try:
             df_customers = _load_customers(sess, q=None)
         except Exception as e:
+            try: sess.rollback()
+            except: pass
             st.error("고객 목록 조회 실패")
             st.exception(e)
             return
@@ -326,6 +336,8 @@ def render_info_pane():
         try:
             df_accounts = _load_accounts(sess, customer_id=selected_customer_id)
         except Exception as e:
+            try: sess.rollback()
+            except: pass
             st.error("계좌 조회 실패")
             st.exception(e)
             df_accounts = pd.DataFrame(columns=[x for x in KMAP_ACCOUNTS.keys()])
