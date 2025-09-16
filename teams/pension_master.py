@@ -1,4 +1,5 @@
 import inspect
+import json
 
 from textwrap import dedent
 from typing import Optional, AsyncGenerator, Any, Dict
@@ -6,15 +7,16 @@ from typing import Optional, AsyncGenerator, Any, Dict
 from agno.models.openai import OpenAIChat
 from agno.team.team import Team
 from agno.storage.postgres import PostgresStorage
+from agno.utils.log import logger
 
 from db.session import db_url
 from teams.settings import team_settings
-from agents.settings import agent_settings
 
 from agents.intent_agent import get_intent  # ✅ IntentLabel/IntentResult import 제거
 from agents.pension_account import get_pension_account
 from agents.pension_policy import get_pension_policy
 
+from ui.utils import _json_default
 
 def get_pension_master_team(
     model_id: Optional[str] = None,
@@ -69,7 +71,6 @@ async def run_pension_master(team, message: str, context: dict):
     - 스트리밍에서 텍스트 0바이트면 non-stream 폴백 강제
     - 항상 문자열만 yield (UI는 그대로 붙이기만)
     """
-    import json, inspect
 
     def _to_dict(obj):
         if obj is None:
@@ -101,7 +102,6 @@ async def run_pension_master(team, message: str, context: dict):
     def _build_runtime_context_prompt(ctx: dict) -> str:
         safe = {
             "customer": ctx.get("customer") or {},
-            "customer_id": ctx.get("customer_id"),
             "accounts_selected": (ctx.get("accounts") or [])[:20],
             "sim_params": ctx.get("sim_params", {}),
         }
@@ -110,7 +110,7 @@ async def run_pension_master(team, message: str, context: dict):
             "If something is missing, query DB/KB via tools. "
             "Prefer Korean if user speaks Korean."
         )
-        js = json.dumps(safe, ensure_ascii=False, indent=2)
+        js = json.dumps(safe, ensure_ascii=False, indent=2, default=_json_default)
         return f"{guide}\n<runtime_context>\n{js}\n</runtime_context>"
 
     async def _iterate_as_text(agent, msg: str, ctx: dict):
@@ -136,6 +136,7 @@ async def run_pension_master(team, message: str, context: dict):
     intent_res = await intent_agent.arun(message, stream=False, context=context)
     intent_obj = _to_dict(intent_res)
     label = str(intent_obj.get("intent", "general")).lower()
+    logger.info(f"Intent label: {label}")
 
     # ---------- 2) Routing ----------
     if label == "account":
@@ -147,12 +148,15 @@ async def run_pension_master(team, message: str, context: dict):
         target = get_pension_policy(model_id=team.model.id, user_id=team.user_id, session_id=team.session_id, debug_mode=False)
         chosen = "policy"
 
+    #logger.info(f"context : {context}")
     # ---------- 3) Context injection ----------
     try:
         base_instr = getattr(target, "instructions", "") or ""
         runtime_ctx = _build_runtime_context_prompt(context or {})
-        target.instructions = (base_instr + "\n\n" + runtime_ctx).strip()
-    except Exception:
+        target.instructions = (base_instr + "\n\n[Context]\n" + runtime_ctx).strip()
+        #logger.info(f"instructions: {target.instructions}")
+    except Exception as e:
+        logger.error(str(e))
         pass
 
     # ---------- 4) Inline debug header (첫 줄로 한 번만) ----------

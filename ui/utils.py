@@ -2,6 +2,13 @@ from typing import Any, Callable, Dict, List, Optional, Union, Tuple
 from dataclasses import asdict, is_dataclass
 
 import re
+import pandas as pd
+import numpy as np
+from datetime import date as _date
+from datetime import datetime
+import uuid
+from decimal import Decimal
+
 import streamlit as st
 from agno.agent import Agent
 from agno.document import Document
@@ -61,6 +68,38 @@ async def selected_model() -> str:
         key="model_selector",
     )
     return CHAT_MODELS[selected_model]
+
+# ====== Context Utils ======
+def _json_default(o):
+    # 날짜/시간
+    if isinstance(o, (_date, datetime, pd.Timestamp)):
+        return o.isoformat()
+    # 시간 차이
+    if isinstance(o, (pd.Timedelta, np.timedelta64)):
+        return str(o)
+    # 수치형
+    if isinstance(o, (np.integer,)):
+        return int(o)
+    if isinstance(o, (np.floating,)):
+        return float(o)
+    if isinstance(o, (np.bool_,)):
+        return bool(o)
+    if isinstance(o, Decimal):
+        return float(o)
+    # 배열/시리즈/데이터프레임
+    if isinstance(o, (np.ndarray,)):
+        return o.tolist()
+    if isinstance(o, (pd.Series,)):
+        return o.to_list()
+    if isinstance(o, (pd.DataFrame,)):
+        return o.to_dict(orient="records")
+    # 기타 자주 나오는 타입
+    if isinstance(o, (set, tuple)):
+        return list(o)
+    if isinstance(o, uuid.UUID):
+        return str(o)
+    # 마지막 폴백
+    return str(o)
 
 # ====== Context Utils ======
 def _ctx_to_dict_any(ctx: Any) -> Dict[str, Any]:

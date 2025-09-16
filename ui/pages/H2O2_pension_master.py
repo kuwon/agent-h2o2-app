@@ -6,7 +6,7 @@ from agno.team import Team
 from agno.tools.streamlit.components import check_password
 from agno.utils.log import logger
 
-from teams.pension_master import get_pension_master_team, run_pension_master
+from teams.pension_master import get_pension_master_team
 from ui.css import CUSTOM_CSS, TITLE_SUBTITLE_CSS
 from ui.chat import render_chat_pane
 from ui.panes import render_left_pane

@@ -9,7 +9,7 @@ from dataclasses import asdict, is_dataclass
 
 import streamlit as st
 from streamlit import components
-from agno.team import Team
+from agno.utils.log import logger
 
 from ui.state import PensionContext
 from ui.utils import (
@@ -17,7 +17,7 @@ from ui.utils import (
     add_message,   # async/sync 모두 대응
 )
 
-from teams.pension_master import run_pension_master, get_pension_master_team
+from teams.pension_master import run_pension_master
 
 nest_asyncio.apply()
 
@@ -151,6 +151,7 @@ async def render_chat_pane(
 
     ctx: PensionContext = st.session_state["context"]
     ctx_payload = _ctx_to_payload(ctx)  # ✅ team에게 넘길 컨텍스트
+    #logger.info(f'ctx_payload: {ctx_payload}')
 
     # 상단 버튼
     # --- 헤더: 제목(왼쪽) · Clear 버튼(오른쪽) ---
@@ -220,9 +221,14 @@ async def render_chat_pane(
         streamed = ""
         displayed_once_think = False
 
+        logger.info(f"customer: {ctx_payload.get('customer')}, ")
+        logger.info(f"accounts={len(ctx_payload.get('accounts', []))},")
+        logger.info(f"simulation ={'yes' if ctx_payload.get('sim_params') else 'no'}")
+
         st.caption(
             f"ctx: customer={'yes' if ctx_payload.get('customer') else 'no'}, "
-            f"accounts={len(ctx_payload.get('accounts', []))}"
+            f"accounts={len(ctx_payload.get('accounts', []))}, "
+            f"simulation={'yes' if ctx_payload.get('sim_params') else 'no'}"
         )
 
         try:

@@ -6,7 +6,7 @@ import json
 
 import io
 
-from decimal import Decimal
+
 from textwrap import dedent
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import date as _date
@@ -17,16 +17,14 @@ from workspace.toolkits import pnsn_calculator
 
 from agents.simulation_report import get_simulation_report
 from agno.utils.log import logger
-from ui.utils import _ctx_to_dict_any, update_ctx
+from ui.utils import _ctx_to_dict_any, update_ctx, _json_default
 
 import plotly.graph_objects as go
 import plotly.io as pio
 
-import uuid
 
 ST_SIM = "sim_store"          # 시뮬 결과 저장소 (절대 초기화 금지)
 ST_REPORT = "report_store"    # 리포트 상태 저장소 (토글에 따라 초기화)
-
 
 
 # 시뮬 직후 결과를 세션에 ‘저장’하는 함수 (이 함수만 호출하면 됨)
@@ -41,36 +39,6 @@ def persist_after_simulation(dict_simul_result: dict, df_capped: pd.DataFrame, *
     # 안전하게 즉시 반영
     #st.rerun()
 
-def _json_default(o):
-    # 날짜/시간
-    if isinstance(o, (_date, datetime, pd.Timestamp)):
-        return o.isoformat()
-    # 시간 차이
-    if isinstance(o, (pd.Timedelta, np.timedelta64)):
-        return str(o)
-    # 수치형
-    if isinstance(o, (np.integer,)):
-        return int(o)
-    if isinstance(o, (np.floating,)):
-        return float(o)
-    if isinstance(o, (np.bool_,)):
-        return bool(o)
-    if isinstance(o, Decimal):
-        return float(o)
-    # 배열/시리즈/데이터프레임
-    if isinstance(o, (np.ndarray,)):
-        return o.tolist()
-    if isinstance(o, (pd.Series,)):
-        return o.to_list()
-    if isinstance(o, (pd.DataFrame,)):
-        return o.to_dict(orient="records")
-    # 기타 자주 나오는 타입
-    if isinstance(o, (set, tuple)):
-        return list(o)
-    if isinstance(o, uuid.UUID):
-        return str(o)
-    # 마지막 폴백
-    return str(o)
 
 
 def _find_col(candidates: List[str], columns: List[str]) -> Optional[str]:
@@ -269,42 +237,37 @@ def strptime_date_safe(val, fmt="%Y%m%d"):
     except ValueError:
         return None
 
-def _save_df_to_context(dict_simul_result: Dict, df: pd.DataFrame, *, path=("sim_params"), key_name="df_capped"):
+def _save_df_to_context(dict_simul_input: Dict, dict_simul_result: Dict, ai_report_str):
     """df를 records dict로 바꿔 context(sim_params)에 저장.
     """
-    records = df.to_dict(orient="records")
+    #records = df.to_dict(orient="records")
     #logger.info(f"records: {records}")
 
     # TODO: 결과를 좀 더 예쁘게 정리해서 담을 필요가 있음
     # Agent 또는 Tool을 추가로 호출 
     update_ctx(
         sim_params={
-            "calc_results": dict_simul_result,
-            "details": records
+            "input": dict_simul_input,
+            "output": dict_simul_result,
+            "report": ai_report_str
         }
     )
     st.success("시뮬레이션 결과가 Context에 저장되었습니다.")
 
-def _generate_report(dict_simul_result: Dict, df_capped: pd.DataFrame, df_seq: pd.DataFrame):
+def _generate_report(dict_simul_input: Dict, dict_simul_result: Dict, df_capped: pd.DataFrame):
     """df를 records dict로 바꿔 context(sim_params)에 저장.
     """
-    #records = df_capped.to_dict(orient="records")
-    #logger.info(f"records: {records}")
     agent = get_simulation_report()
-    # payload = {
-    #     "산출내역": dict_simul_result,
-    #     "산출내역 상세": df_capped.to_dict(orient="records")
-    # }
     payload = {
+        "dict_sumul_input": dict_simul_input,
         "dict_simul_result": dict_simul_result,                     # 원본
         "df_capped_head": df_capped.head(30).to_dict(orient="records"),  # 일부만
         # 그래프용 수치도 같이 전달(에이전트가 텍스트 해설에 활용)
-        "payout_by_sequence": df_seq.to_dict(orient="records") if df_seq is not None else None,
     }    
     user_msg = (
-        "아래 JSON(시뮬레이션 결과/산출 근거/회차별 실수령금액 요약)을 근거로, "
+        "아래 JSON(시뮬레이션 입력/결과/결과 상세)을 근거로, "
         "간결한 한국어 Markdown 리포트를 작성해줘. 숫자는 3자리 콤마와 '원' 표기, "
-        "가정/한계도 간단히 명시하고, 그래프 해설을 한 단락 포함해줘.\n\n"        
+        "가정/한계도 간단히 명시하고, 여러 옵션 중에서 최적의 옵션을 추천해줘.\n\n"        
         + json.dumps(payload, ensure_ascii=False, indent=2, default=_json_default)
     )
     user_msg = f"아래 JSON을 바탕으로 리포트를 작성해줘.\n\n{payload}"
@@ -827,10 +790,10 @@ def render_sim_pane(ctx_obj: Any):
             # ===================== 3) 하단 결과 렌더 =====================
             # 수행 결과
             # 세션에 저장된 결과만 사용 (지역 변수에 의존 X)
-            sim_result = st.session_state[ST_SIM]["result"]
-            df_capped = st.session_state[ST_SIM]["df"]
+            #sim_result = st.session_state[ST_SIM]["result"]
+            #df_capped = st.session_state[ST_SIM]["df"]
 
-            if sim_result is not None and df_capped is not None:
+            if dict_simul_result is not None and df_capped is not None:
                 # ------------------
                 # 연금 개시 정보
                 # ------------------
@@ -889,15 +852,15 @@ def render_sim_pane(ctx_obj: Any):
                     hide_index=True,
                 )                     
 
+                ai_report_str = None 
                 if ai_flag:
                     st.divider()
                     st.markdown("### 📝 AI 리포트")
 
-                    seq_pack = extract_payout_series(df_capped)
-                    resp = _generate_report(dict_simul_result, df_capped, seq_pack)
-                    resp_str = getattr(resp, "content", str(resp))
-                    st.session_state[ST_REPORT]["md"] = resp_str
-                    st.markdown(resp_str)
+                    resp = _generate_report(params, dict_simul_result, df_capped)
+                    ai_report_str = getattr(resp, "content", str(resp))
+                    st.session_state[ST_REPORT]["md"] = ai_report_str
+                    st.markdown(ai_report_str)
 
                 # 하단 내보내기
                 st.divider()
@@ -914,7 +877,7 @@ def render_sim_pane(ctx_obj: Any):
                 btn2.button(
                     "💾 컨텍스트에 저장", 
                     on_click=_save_df_to_context,
-                    args = (dict_simul_result, df_capped),
+                    args = (params, dict_simul_result, ai_report_str),
                     key="btn_save_to_context", 
                     width="stretch")
         except Exception as e:
