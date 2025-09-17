@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+### sample command
+### ./deploy.sh --tag prd --no-retag --health-path /v1/health
+
+
 ### =========================
 ### 기본 설정(환경에 맞게 수정)
 ### =========================
@@ -19,11 +23,11 @@ RULE_ARN=""           # 특정 규칙 갱신 시 지정
 VPC_ID=""             # 새 TG 생성 시 필요(기존 TG를 쓸 경우 생략 가능)
 
 # 헬스체크/포트/TG 설정(필요 시 수정)
-TG_NAME=""            # 새 TG 생성 시 이름(미지정 시 SERVICE 기반 자동명)
+TG_NAME=""
 TG_TARGET_TYPE="ip"   # Fargate는 ip 권장
 TG_PROTOCOL="HTTP"
 TG_HEALTH_PROTOCOL="HTTP"
-TG_HEALTH_PATH="/"    # FastAPI면 /v1/health 등으로 바꾸세요
+TG_HEALTH_PATH="/"    # FastAPI면 /v1/health 권장
 TG_HEALTH_PORT="traffic-port"
 TG_HEALTHY_THRESHOLD=2
 TG_UNHEALTHY_THRESHOLD=2
@@ -42,17 +46,37 @@ export AWS_DEFAULT_REGION="$REGION"
 ### =========================
 NEW_TAG=""
 RETAG_FROM=""
+NO_RETAG=false
+PIN_BY_DIGEST=false
+
+usage(){
+  cat <<EOF
+Usage: $0 [options]
+  --tag <NEW_TAG>          서비스에 적용할 새 이미지 태그(예: prd-20250916-1)
+  --no-retag               ECR retag(put-image) 건너뛰고 NEW_TAG를 직접 사용
+  --pin-by-digest          NEW_TAG를 digest로 해석하여 TD에 IMAGE@sha256 형식으로 고정
+  --retag-from <TAG>       (선택) retag 소스 태그
+  --listener-arn <ARN>     ALB 리스너 ARN
+  --rule-arn <ARN>         수정할 리스너 규칙 ARN
+  --vpc-id <VPCID>         새 TG 생성 시 필요
+  --tg-name <NAME>         새 TG 이름(미지정 시 SERVICE-tg)
+  --health-path <PATH>     헬스체크 경로(기본 /)
+EOF
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --tag)           NEW_TAG="$2"; shift 2 ;;
     --retag-from)    RETAG_FROM="$2"; shift 2 ;;
+    --no-retag)      NO_RETAG=true; shift 1 ;;
+    --pin-by-digest) PIN_BY_DIGEST=true; shift 1 ;;
     --listener-arn)  ALB_LISTENER_ARN="$2"; shift 2 ;;
     --rule-arn)      RULE_ARN="$2"; shift 2 ;;
     --vpc-id)        VPC_ID="$2"; shift 2 ;;
     --tg-name)       TG_NAME="$2"; shift 2 ;;
     --health-path)   TG_HEALTH_PATH="$2"; shift 2 ;;
-    *) echo "Unknown arg: $1"; exit 2 ;;
+    -h|--help)       usage; exit 0 ;;
+    *) echo "Unknown arg: $1"; usage; exit 2 ;;
   esac
 done
 
@@ -61,11 +85,10 @@ command -v aws >/dev/null || { echo "ERROR: aws CLI가 필요합니다."; exit 1
 
 log(){ echo -e "[$(date +%H:%M:%S)] $*"; }
 die(){ echo "ERROR: $*" >&2; exit 1; }
-
 cleanup(){ rm -f /tmp/td.json /tmp/td_reg.json; }
 trap cleanup EXIT
 
-# ===== helpers (digest 우선 탐색) =====
+# ===== helpers =====
 get_running_task_digest() {
   local arn
   arn=$(aws ecs list-tasks \
@@ -81,6 +104,21 @@ get_latest_ecr_digest() {
   aws ecr describe-images --repository-name "$ECR_REPO_NAME" \
     --query 'reverse(sort_by(imageDetails,&imagePushedAt))[0].imageDigest' \
     --output text 2>/dev/null | tr -d '\r'
+}
+
+get_digest_by_tag() {
+  local tag="$1"
+  aws ecr describe-images --repository-name "$ECR_REPO_NAME" \
+    --image-ids imageTag="$tag" \
+    --query 'imageDetails[0].imageDigest' \
+    --output text 2>/dev/null | tr -d '\r'
+}
+
+ensure_tag_exists() {
+  local tag="$1"
+  local digest
+  digest=$(get_digest_by_tag "$tag" || true)
+  [[ -n "$digest" && "$digest" != "None" ]] || die "ECR에 태그가 존재하지 않음: $ECR_REPO_NAME:$tag"
 }
 
 ### =========================
@@ -105,58 +143,70 @@ log "CN/PORT: $CN / $PORT"
 log "OLD IMG: $OLD_IMAGE"
 
 ### =========================
-### 1) (선택) ECR 리태깅 — 태그 의존 없이 digest 기반
+### 1) (선택) ECR 리태깅 — 혹은 완전 스킵
 ### =========================
+MANIFEST=""
+TARGET_DIGEST=""
+
 if [[ -n "$NEW_TAG" ]]; then
-  log "1) ECR 리태깅 준비(소스 manifest 확보)"
-
-  MANIFEST=""
-  TARGET_DIGEST=""
-
-  # (선택) 사용자가 --retag-from <tag>를 준 경우, 그 태그에서 1차 시도
-  if [[ -n "${RETAG_FROM:-}" ]]; then
-    log " - 태그 기반 시도: $RETAG_FROM"
-    MANIFEST=$(aws ecr batch-get-image --repository-name "$ECR_REPO_NAME" \
-      --image-ids imageTag="$RETAG_FROM" \
-      --accepted-media-types application/vnd.docker.distribution.manifest.list.v2+json \
-      --accepted-media-types application/vnd.docker.distribution.manifest.v2+json \
-      --query 'images[0].imageManifest' --output text 2>/dev/null | tr -d '\r' || true)
-    [[ -n "$MANIFEST" && "$MANIFEST" != "None" ]] && log " - 태그에서 manifest 확보" || MANIFEST=""
-  fi
-
-  # digest 기반: 실행 중 태스크 → 없으면 ECR 최신
-  if [[ -z "$MANIFEST" ]]; then
-    TARGET_DIGEST=$(get_running_task_digest || true)
-    if [[ -n "$TARGET_DIGEST" && "$TARGET_DIGEST" != "None" ]]; then
-      log " - 실행중 태스크 digest: $TARGET_DIGEST"
-    else
-      TARGET_DIGEST=$(get_latest_ecr_digest || true)
-      [[ -n "$TARGET_DIGEST" && "$TARGET_DIGEST" != "None" ]] || die "소스 digest를 찾지 못함 (RUNNING 태스크/리포지토리 최신 이미지 없음)"
-      log " - ECR 최신 digest: $TARGET_DIGEST"
+  if $NO_RETAG; then
+    log "1) --no-retag 지정: ECR put-image 생략, NEW_TAG 존재 여부만 확인"
+    ensure_tag_exists "$NEW_TAG"
+  else
+    log "1) ECR 리태깅 준비(소스 manifest 확보)"
+    # (선택) 사용자가 --retag-from <tag>를 지정한 경우 우선 사용
+    if [[ -n "${RETAG_FROM:-}" ]]; then
+      log " - 태그 기반 시도: $RETAG_FROM"
+      MANIFEST=$(aws ecr batch-get-image --repository-name "$ECR_REPO_NAME" \
+        --image-ids imageTag="$RETAG_FROM" \
+        --accepted-media-types application/vnd.docker.distribution.manifest.list.v2+json \
+        --accepted-media-types application/vnd.docker.distribution.manifest.v2+json \
+        --query 'images[0].imageManifest' --output text 2>/dev/null | tr -d '\r' || true)
+      [[ -n "$MANIFEST" && "$MANIFEST" != "None" ]] && log " - 태그에서 manifest 확보" || MANIFEST=""
     fi
 
-    MANIFEST=$(aws ecr batch-get-image --repository-name "$ECR_REPO_NAME" \
-      --image-ids imageDigest="$TARGET_DIGEST" \
-      --accepted-media-types application/vnd.docker.distribution.manifest.list.v2+json \
-      --accepted-media-types application/vnd.docker.distribution.manifest.v2+json \
-      --query 'images[0].imageManifest' --output text 2>/dev/null | tr -d '\r' || true)
-    [[ -n "$MANIFEST" && "$MANIFEST" != "None" ]] || die "소스 digest의 manifest를 찾지 못함"
-  fi
+    # digest 기반: 실행 중 태스크 → 없으면 ECR 최신
+    if [[ -z "$MANIFEST" ]]; then
+      TARGET_DIGEST=$(get_running_task_digest || true)
+      if [[ -n "$TARGET_DIGEST" && "$TARGET_DIGEST" != "None" ]]; then
+        log " - 실행중 태스크 digest: $TARGET_DIGEST"
+      else
+        TARGET_DIGEST=$(get_latest_ecr_digest || true)
+        [[ -n "$TARGET_DIGEST" && "$TARGET_DIGEST" != "None" ]] || die "소스 digest를 찾지 못함 (RUNNING 태스크/리포지토리 최신 이미지 없음)"
+        log " - ECR 최신 digest: $TARGET_DIGEST"
+      fi
 
-  log " - put-image → tag: $NEW_TAG"
-  aws ecr put-image --repository-name "$ECR_REPO_NAME" \
-    --image-tag "$NEW_TAG" --image-manifest "$MANIFEST" >/dev/null
+      MANIFEST=$(aws ecr batch-get-image --repository-name "$ECR_REPO_NAME" \
+        --image-ids imageDigest="$TARGET_DIGEST" \
+        --accepted-media-types application/vnd.docker.distribution.manifest.list.v2+json \
+        --accepted-media-types application/vnd.docker.distribution.manifest.v2+json \
+        --query 'images[0].imageManifest' --output text 2>/dev/null | tr -d '\r' || true)
+      [[ -n "$MANIFEST" && "$MANIFEST" != "None" ]] || die "소스 digest의 manifest를 찾지 못함"
+    fi
+
+    log " - put-image → tag: $NEW_TAG"
+    aws ecr put-image --repository-name "$ECR_REPO_NAME" \
+      --image-tag "$NEW_TAG" --image-manifest "$MANIFEST" >/dev/null
+  fi
 fi
 
 ### =========================
-### 2) 새 TD 등록(JSON 생성)
+### 2) 새 TD 등록(JSON 생성) — 태그/다이제스트 고정 선택
 ### =========================
 if [[ -n "$NEW_TAG" ]]; then
-  NEW_IMAGE="${IMAGE_BASE_URI}:${NEW_TAG}"
+  if $PIN_BY_DIGEST; then
+    DIG=$(get_digest_by_tag "$NEW_TAG" || true)
+    [[ -n "$DIG" && "$DIG" != "None" ]] || die "NEW_TAG → digest 해석 실패: $NEW_TAG"
+    NEW_IMAGE="${IMAGE_BASE_URI}@${DIG}"   # ★ digest 고정
+    log "NEW IMG (pinned digest): $NEW_IMAGE  (tag=$NEW_TAG, digest=$DIG)"
+  else
+    NEW_IMAGE="${IMAGE_BASE_URI}:${NEW_TAG}"  # 태그 사용
+    log "NEW IMG (by tag): $NEW_IMAGE"
+  fi
 else
   NEW_IMAGE="$OLD_IMAGE"
+  log "NEW IMG: (변경 없음) $NEW_IMAGE"
 fi
-log "NEW IMG: $NEW_IMAGE"
 
 jq --arg img "$NEW_IMAGE" --argjson ci "$CONTAINER_INDEX" '
   .containerDefinitions[$ci].image = $img
@@ -211,7 +261,6 @@ else
     --query 'TargetGroups[0].TargetGroupArn' --output text | tr -d '\r')
   log " - TG 생성 완료: $TG_ARN"
 
-  # 등록 지연 시간 설정(선택)
   aws elbv2 modify-target-group-attributes \
     --target-group-arn "$TG_ARN" \
     --attributes Key=deregistration_delay.timeout_seconds,Value=$TG_DEREG_DELAY >/dev/null

@@ -66,7 +66,7 @@ async def header():
     #     "<p class='subheading'>맞춤형 데이터로 상담하고, 정책으로 판단하며, 시뮬레이션 실행까지 </p>",
     #     unsafe_allow_html=True,
     # )
-    TITLE = "한투 <span class='accent'>퇴직연금 마스터 Agent</span> | Team H2O2"
+    TITLE = "한투 <span class='accent'>퇴직·연금 마스터 Agent</span> | Team H2O2"
     SUBTITLE = "맞춤 데이터로 상담하고, 정책으로 판단하며, 시뮬레이션으로 실행합니다"
 
     st.markdown(TITLE_SUBTITLE_CSS, unsafe_allow_html=True)

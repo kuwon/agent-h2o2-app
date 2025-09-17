@@ -5,6 +5,8 @@
 docker exec -it agent-app-api alembic -c db/alembic.ini revision --autogenerate -m "add dc contract db"
 docker exec -it agent-app-api alembic -c db/alembic.ini upgrade head
 
+ag ws up --env prd --infra docker --type image --force
+
 * 사용자가 챗봇을 쓴다고 했을 때 처음에는 의도를 분석해서 단순 질의인지를 tool을 써야 하는지 등을 판단해야함.
 intent 분류하고, 그에 맞춰서 필요한 agent 실행 시키기
 대화의 연결을 감안하여 이어서 수행할수 있을지도 확인해야함
@@ -91,7 +93,7 @@ CREATE CAST (varchar AS vector) WITH INOUT AS IMPLICIT;
 "utlz_erng_amt":"운용수익금액",
 "dfr_rtmt_taxa":"이연퇴직소득세",
 
-
+#### ECR 로그인
 aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 037129617559.dkr.ecr.ap-northeast-2.amazonaws.com
 
 ./rds-ip-allow.sh status
