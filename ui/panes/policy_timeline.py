@@ -28,6 +28,11 @@ def _coerce_inputs(
     customer_dict: Optional[Dict[str, Any]],
     accounts_list: Optional[List[Dict[str, Any]]],
 ) -> tuple[pd.Series, pd.DataFrame]:
+    """
+    Dict → (pd.Series, pd.DataFrame) 변환
+    - customer_dict: {"customer_id": "...", "brth_dt": "...", ...}
+    - accounts_list: [{"account_id": "...", "expd_dt": "...", ...}, ...]
+    """
     cust = pd.Series(customer_dict or {})
     acc = pd.DataFrame(accounts_list or [])
     if acc.empty:
@@ -61,141 +66,181 @@ def _color_for_account(aid: str, acnt_type: Optional[str]) -> str:
     idx = int(h[:8], 16) % len(_palette())
     return _palette()[idx]
 
+def _icon_for_kind(kind: Optional[str]) -> str:
+    """이벤트 종류별 아이콘(이모지)"""
+    k = (kind or "").lower()
+    if k in ("birth", "brth", "birthday", "생일", "생년월일"):
+        return "🎂"
+    if k in ("begin", "open", "개설", "계좌개설"):
+        return "🏦"
+    if k in ("mid", "중간정산", "중정", "mid_settlement"):
+        return "🛠️"
+    if k in ("retire", "퇴직", "retirement"):
+        return "👋"
+    if k in ("maturity", "만기"):
+        return "⏰"
+    # fallback
+    return "📌"
+
 def _build_fishbone_html(
     events: List[Dict[str, Any]],
     account_type_map: Dict[str, str],
 ) -> str:
     """
     Fishbone: 중앙 라인 위/아래로 번갈아 이벤트 배치.
-    각 칸은 그리드의 column에 대응. 계좌 이벤트는 색상 라벨.
-    표시 텍스트: [일시] [계좌번호 | 구분] [이벤트종류]
+    표시 텍스트: [일시] [계좌번호 | 구분] [아이콘 + 이벤트종류]
+    계좌 이벤트는 계좌별 색상으로 표시.
     """
     if not events:
         return "<p>표시할 타임라인 이벤트가 없습니다.</p>"
 
-    # 날짜 순으로 들어온 events를 그대로 좌→우로 배치
     n = len(events)
 
-    # 각 이벤트의 렌더 블럭 생성
     def render_event(i: int, ev: Dict[str, Any]) -> str:
         dt = ev.get("date")
         date_txt = "-" if not dt else dt.strftime("%Y-%m-%d")
         label = ev.get("label") or "-"
         kind = ev.get("kind") or "-"
+        icon = _icon_for_kind(kind)
         meta = ev.get("meta") or {}
         aid = meta.get("account_id")
         acnt_type = account_type_map.get(aid, None) if aid else None
 
-        # 색상: 계좌 이벤트면 계좌별 색, 생년월일 등 고객 이벤트면 중립
+        # 색상: 계좌 이벤트면 계좌별 색, 고객 이벤트(생년월일 등)는 중립
         if aid:
             color = _color_for_account(aid, acnt_type)
-            acct_pill = f"""<span class="acct-pill" style="background:{color}1A;color:{color};border:1px solid {color}33">
-                {aid} <span class="sep">|</span> {acnt_type or '-'}
-            </span>"""
+            acct_pill = (
+                '<span class="acct-pill" '
+                f'style="background:{color}1A;color:{color};border:1px solid {color}33">'
+                f'{aid} <span class="sep">|</span> {acnt_type or "-"}'
+                "</span>"
+            )
         else:
             color = "#6B7280"  # neutral gray
-            acct_pill = f"""<span class="acct-pill" style="background:#eee;color:#374151;border:1px solid #e5e7eb">
-                -
-            </span>"""
+            acct_pill = (
+                '<span class="acct-pill" '
+                'style="background:#eee;color:#374151;border:1px solid #e5e7eb">-</span>'
+            )
 
-        # 점/스파인 컬러도 계좌 컬러(고객 이벤트는 중립)
-        dot_style = f"background:{color};border-color:{color}55"
+        dot_style = f"background:{color};border-color:{color}66"
+        stick_style = f"border-color:{color}66"
 
-        # 본문(위/아래 카드)
-        body = f"""
-        <div class="ev-card">
-            <div class="ev-date">{date_txt}</div>
-            <div class="ev-acct">{acct_pill}</div>
-            <div class="ev-kind">{label}</div>
-        </div>
-        """
+        body = (
+            '<div class="ev-card">'
+            f'  <div class="ev-date">{date_txt}</div>'
+            f'  <div class="ev-acct">{acct_pill}</div>'
+            f'  <div class="ev-kind"><span class="ev-icon" aria-hidden="true">{icon}</span>'
+            f'    <span class="ev-text">{label}</span></div>'
+            "</div>"
+        )
 
-        # 하나의 column cell
-        return f"""
-        <div class="fb-col" style="grid-column:{i+1}">
-            <div class="fb-branch">
-                <span class="fb-dot" style="{dot_style}"></span>
-                <span class="fb-stick" style="border-color:{color}40"></span>
-            </div>
-            {body}
-        </div>
-        """
+        return (
+            f'<div class="fb-col" style="grid-column:{i+1}">'
+            '  <div class="fb-branch">'
+            f'    <span class="fb-dot" style="{dot_style}"></span>'
+            f'    <span class="fb-stick" style="{stick_style}"></span>'
+            "  </div>"
+            f"  {body}"
+            "</div>"
+        )
 
-    top_cells = []
-    bot_cells = []
+    top_cells: List[str] = []
+    bot_cells: List[str] = []
     for i, ev in enumerate(events):
         cell_html = render_event(i, ev)
-        # 짝수 인덱스는 위쪽, 홀수는 아래쪽
         if i % 2 == 0:
             top_cells.append(cell_html)
         else:
             bot_cells.append(cell_html)
 
-    # grid-template-columns: repeat(n, minmax(140px, 1fr))
-    grid_cols = f"repeat({n}, minmax(140px, 1fr))"
+    # pane 폭을 고려한 최소 칸 너비
+    grid_cols = f"repeat({n}, minmax(160px, 1fr))"
 
-    return f"""
+    # CSS는 일반 문자열로 두고 변수만 나중에 결합 (중괄호 이슈 회피)
+    css = """
 <style>
-.fishbone {{
+.pane-fishbone {
   width: 100%;
+  overflow-x: auto;  /* pane 안에서 가로 스크롤 */
+  padding-bottom: 6px;
+}
+.pane-fishbone::-webkit-scrollbar {
+  height: 8px;
+}
+.pane-fishbone::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.2);
+  border-radius: 999px;
+}
+.fishbone {
+  min-width: 100%;
   margin: 8px 0 16px;
-}}
-.fishbone .fb-top, .fishbone .fb-bottom {{
+}
+.fishbone .fb-top, .fishbone .fb-bottom {
   display: grid;
-  grid-template-columns: {grid_cols};
-  gap: 0.75rem;
+  grid-template-columns: """ + grid_cols + """;
+  gap: 0.9rem;
   align-items: end;
-}}
-.fishbone .fb-center {{
+}
+
+/* 메인 스파인(척추) — 브랜드 블루로 선명하게 + 글로우 */
+.fishbone .fb-center {
   position: relative;
-  height: 2px;
-  background: linear-gradient(90deg, rgba(0,0,0,0.08), rgba(0,0,0,0.12), rgba(0,0,0,0.08));
+  height: 4px;
+  background: #418FDE;
+  box-shadow: 0 0 0 1px rgba(65,143,222,0.35), 0 0 18px rgba(65,143,222,0.28);
+  border-radius: 2px;
   margin: 10px 0;
-}}
-.fb-col {{
+}
+
+/* 이벤트 칼럼 */
+.fb-col {
   display: flex;
   flex-direction: column;
   align-items: center;
-}}
-.fb-branch {{
+}
+
+/* 브랜치/점 대비 강화 */
+.fb-branch {
   position: relative;
-  height: 28px;
+  height: 30px;
   width: 2px;
-  border-left: 2px dashed rgba(0,0,0,0.12);
+  border-left: 2px dashed rgba(0,0,0,0.18);
   margin-bottom: 6px;
-}}
-.fb-dot {{
+}
+.fb-dot {
   position: absolute;
   top: -7px;
   left: -6px;
   width: 12px; height: 12px;
   border-radius: 999px;
-  border: 2px solid rgba(0,0,0,0.15);
-  background: #999;
-}}
-.fb-stick {{
+  border: 2px solid rgba(0,0,0,0.22);
+  background: #777;
+}
+.fb-stick {
   position: absolute;
   bottom: -6px;
   left: -1px;
   display: inline-block;
-  height: 12px;
-  border-left: 2px solid rgba(0,0,0,0.15);
-}}
-.ev-card {{
+  height: 14px;
+  border-left: 2px solid rgba(0,0,0,0.22);
+}
+
+/* 카드 */
+.ev-card {
   background: #fff;
   border: 1px solid rgba(0,0,0,0.08);
   box-shadow: 0 2px 10px rgba(0,0,0,0.04);
-  border-radius: 10px;
-  padding: 6px 8px;
+  border-radius: 12px;
+  padding: 6px 10px;
   text-align: center;
-  min-width: 120px;
-}}
-.ev-date {{
+  min-width: 135px;
+}
+.ev-date {
   font-size: 12px;
   color: #6B7280;
-  margin-bottom: 2px;
-}}
-.acct-pill {{
+  margin-bottom: 4px;
+}
+.acct-pill {
   display: inline-block;
   font-size: 11px;
   line-height: 1;
@@ -203,31 +248,59 @@ def _build_fishbone_html(
   border-radius: 999px;
   margin: 0 0 4px 0;
   white-space: nowrap;
-}}
-.ev-acct {{ margin-bottom: 2px; }}
-.ev-kind {{ font-weight: 600; font-size: 13px; color: #111827; }}
-.sep {{ opacity: 0.6; padding: 0 4px; }}
-@media (prefers-color-scheme: dark) {{
-  .ev-card {{
-    background: #0b0f17;
-    border-color: rgba(255,255,255,0.08);
-    box-shadow: 0 2px 14px rgba(0,0,0,0.35);
-  }}
-  .ev-kind {{ color: #e5e7eb; }}
-  .ev-date {{ color: #9CA3AF; }}
-}}
-</style>
+}
+.ev-acct { margin-bottom: 2px; }
+.ev-kind { 
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+  font-weight: 700; 
+  font-size: 13px; 
+  color: #111827; 
+  letter-spacing: 0.1px; 
+}
+.ev-icon { 
+  font-size: 16px; 
+  line-height: 1; 
+  transform: translateY(1px);
+}
+.sep { opacity: 0.6; padding: 0 4px; }
 
-<div class="fishbone">
-  <div class="fb-top">
-    {''.join(top_cells)}
-  </div>
-  <div class="fb-center"></div>
-  <div class="fb-bottom">
-    {''.join(bot_cells)}
-  </div>
-</div>
+/* 다크 모드 대비 보정 */
+@media (prefers-color-scheme: dark) {
+  .pane-fishbone::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.22); }
+  .ev-card {
+    background: #0b0f17;
+    border-color: rgba(255,255,255,0.10);
+    box-shadow: 0 2px 16px rgba(0,0,0,0.45);
+  }
+  .ev-kind { color: #E6E9EE; }
+  .ev-date { color: #9CA3AF; }
+  .fb-branch { border-left-color: rgba(255,255,255,0.22); }
+  .fb-dot { border-color: rgba(255,255,255,0.28); background: #aab1c2; }
+  .fb-stick { border-left-color: rgba(255,255,255,0.28); }
+
+  /* 메인 스파인: 다크에서 더 또렷하게 */
+  .fishbone .fb-center {
+    background: #5AA2E4;
+    box-shadow: 0 0 0 1px rgba(90,162,228,0.55), 0 0 22px rgba(90,162,228,0.40);
+  }
+}
+</style>
 """
+
+    html = (
+        css +
+        '<div class="pane-fishbone">'
+        '  <div class="fishbone">'
+        f'    <div class="fb-top">{"".join(top_cells)}</div>'
+        '    <div class="fb-center"></div>'
+        f'    <div class="fb-bottom">{"".join(bot_cells)}</div>'
+        '  </div>'
+        '</div>'
+    )
+    return html
 
 # ─────────────────────────────────────────────
 # Public API
@@ -249,7 +322,7 @@ def render_policy_and_timeline_section(
         events = build_timeline(customer_row, accounts_df)
 
         # account_id -> acnt_type 매핑 (fishbone에서 보여줄 구분값)
-        acc_type_map = {}
+        acc_type_map: Dict[str, str] = {}
         if "account_id" in accounts_df.columns and "acnt_type" in accounts_df.columns:
             acc_type_map = (
                 accounts_df[["account_id", "acnt_type"]]
@@ -265,7 +338,7 @@ def render_policy_and_timeline_section(
     except Exception as ex:
         st.warning(f"타임라인 생성 중 오류: {ex}")
 
-    # ── 정책 매칭 (기존 표 그대로 유지; 필요 시 이후에 fishbone만 별도로 유지해도 됨)
+    # ── 정책 매칭(기존 표 형식 유지; 필요 시 이후에 별도 탭으로 분리 가능)
     st.markdown("### 📑 정책 매칭 (조건 ↔ 현재값 ↔ 판정)")
     try:
         policies = load_policies(MARKDOWN_DIR)
@@ -324,4 +397,6 @@ def render_policy_and_timeline_section(
             st.link_button("더 많은 정책 결과 보기", "javascript:window.scrollTo(0,0);")
     except Exception as ex:
         st.warning(f"정책 판정 중 오류: {ex}")
+
+
 

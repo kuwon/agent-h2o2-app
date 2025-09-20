@@ -306,7 +306,7 @@ def render_info_pane():
         lambda r: f"{r.get('customer_name','-')} ({r.get('customer_id','-')})", axis=1
     )
     names = ["— 고객을 선택하세요 —"] + df_customers["display"].tolist()
-    sel = st.selectbox("고객 선택", options=names, index=0, key="customer_select_box")
+    sel = st.selectbox("", options=names, index=0, key="customer_select_box")
 
     # 상태 플래그
     if "accounts_grid_interacted" not in st.session_state:
@@ -322,7 +322,7 @@ def render_info_pane():
             accounts=list(),
             sim_params=dict()
         )
-        st.info("좌측에서 고객을 선택하면 상세 정보와 계좌가 표시됩니다.")
+        st.info("고객을 선택하면 상세 정보와 계좌가 표시됩니다.")
         return
 
     sel_row = df_customers.loc[df_customers["display"] == sel]
@@ -346,12 +346,12 @@ def render_info_pane():
         df_accounts["acnt_evlu_amt"] = pd.to_numeric(df_accounts["acnt_evlu_amt"], errors="coerce").fillna(0)
 
     # 고객 요약 + 차트
-    st.markdown("---")
+    #st.markdown("---")
     colL, colR = st.columns([0.45, 0.55])
     with colL:
         customer_display_kor = _render_customer_summary(sel_row, labels=KMAP_CUSTOMERS)
 
-    st.markdown("---")
+    #st.markdown("---")
     st.markdown("**계좌 목록**")
     grid_res = aggrid_table(
         df_accounts,
@@ -398,6 +398,6 @@ def render_info_pane():
         accounts=accounts_dict,       
     )
 
-    with st.expander("컨텍스트 미리보기 (좌측, 선택 반영)", expanded=False):
-        from ui.utils import get_ctx_dict
-        st.json(get_ctx_dict())
+    # with st.expander("컨텍스트 미리보기 (좌측, 선택 반영)", expanded=False):
+    #     from ui.utils import get_ctx_dict
+    #     st.json(get_ctx_dict())
