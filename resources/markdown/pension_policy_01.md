@@ -17,34 +17,86 @@ A. 정책
     - ISA 계좌의 계약기간 만료 후 만기자금을 계약만료일로부터 60일 이내에 연금계좌로 납입한 경우, 전환입금한 해에 한하여 Min(납입한 금액의 10%, 300만원)만큼 추가세액공제 대상금액이 주어짐
 
 ```yaml policy:
-id: pension_tax_deduction
-title: 연금계좌 세액공제 안내
-anchor: "#pension-tax-deduction"
-conditions:
-  - id: ytd_contrib_positive
-    field: accounts.copt_year_pymt_amt
-    op: sum_gte
-    value: 0
-  - id: below_tax_deduction_limit
-    field: accounts.copt_year_pymt_amt
-    op: sum_gte
-    value: 0   # 기준값 0은 그냥 합계를 계산해주기 위함
-  - id: exceed_tax_deduction_limit
-    field: accounts.copt_year_pymt_amt
-    op: sum_gte
-    value: 7000000    
-effects:
-  info: [ytd_contrib_positive]
-  eligible: [below_tax_deduction_limit, exceed_tax_deduction_limit]
-snippets:
-  ytd_contrib_positive: >
-    올해 납입 이력이 있습니다. 세액공제를 받을 수 있는지 확인하세요.
-  below_tax_deduction_limit: >
-    올해까지의 납입금액이 세액공제 한도(700만원)에 미달합니다.
-    추가 납입 시 공제 가능성이 있으니 고객에게 안내할 수 있습니다.
-  exceed_tax_deduction_limit: >
-    올해 납입금액이 세액공제 한도를 초과했습니다. 추가 납입분은 세액공제가 불가합니다. 
+id: pension_tax_cap_multi
+title: 연금계좌 세액공제 한도(계좌유형별/합산)
+anchor: "#pension-tax-cap-multi"
 
+# 계좌 컬럼 가정
+# - 납입금액: accounts.copt_year_pymt_amt
+# - 계좌유형: accounts.acnt_type  (값: "연금저축", "DC", "IRP")
+
+conditions:
+  # A) 연금저축 단독 한도: 600만원
+  - id: cap_ps_under
+    field: accounts.copt_year_pymt_amt
+    op: sum_lt
+    value: 6000000
+    where:
+      acnt_type_in: ["연금저축"]
+
+  - id: cap_ps_reach_or_over
+    field: accounts.copt_year_pymt_amt
+    op: sum_gte
+    value: 6000000
+    where:
+      acnt_type_in: ["연금저축"]
+
+  # B) DC/IRP 합산 한도: 900만원
+  - id: cap_dc_irp_under
+    field: accounts.copt_year_pymt_amt
+    op: sum_lt
+    value: 9000000
+    where:
+      acnt_type_in: ["DC","IRP"]
+
+  - id: cap_dc_irp_reach_or_over
+    field: accounts.copt_year_pymt_amt
+    op: sum_gte
+    value: 9000000
+    where:
+      acnt_type_in: ["DC","IRP"]
+
+  # C) 연금저축 + DC/IRP 전체 합산 한도: 900만원
+  - id: cap_total_under
+    field: accounts.copt_year_pymt_amt
+    op: sum_lt
+    value: 9000000
+    where:
+      acnt_type_in: ["연금저축","DC","IRP"]
+
+  - id: cap_total_reach_or_over
+    field: accounts.copt_year_pymt_amt
+    op: sum_gte
+    value: 9000000
+    where:
+      acnt_type_in: ["연금저축","DC","IRP"]
+
+effects:
+  # UI에서 우선 보여줄 배지/하이라이트 그룹
+  info:
+    - cap_ps_under
+    - cap_dc_irp_under
+    - cap_total_under
+  ineligible:
+    - cap_ps_reach_or_over
+    - cap_dc_irp_reach_or_over
+    - cap_total_reach_or_over
+
+snippets:
+  cap_ps_under: >
+    A. 연금저축 올해 납입합계가 600만원 미만입니다. 한도 내 추가 납입 시 세액공제 가능성이 있습니다.
+  cap_ps_reach_or_over: >
+    A. 연금저축 올해 납입합계가 600만원 이상입니다. 연금저축 한도는 도달했습니다.
+
+  cap_dc_irp_under: >
+    B. DC/IRP 올해 납입합계가 900만원 미만입니다. 한도 내 추가 납입 시 세액공제 가능성이 있습니다.
+  cap_dc_irp_reach_or_over: >
+    B. DC/IRP 올해 납입합계가 900만원 이상입니다. DC/IRP 한도는 도달했습니다.
+
+  cap_total_under: >
+    C. 연금저축+DC/IRP 전체 합산이 900만원 미만입니다. 합산 한도 내 추가 납입 시 세액공제 가능성이 있습니다.
+  cap_total_reach_or_over: >
+    C. 연금저축+DC/IRP 전체 합산이 900만원 이상입니다. 합산 한도는 도달했습니다.
 ```
 
 B. 근거

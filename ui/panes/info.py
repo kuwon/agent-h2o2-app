@@ -306,7 +306,7 @@ def render_info_pane():
         lambda r: f"{r.get('customer_name','-')} ({r.get('customer_id','-')})", axis=1
     )
     names = ["— 고객을 선택하세요 —"] + df_customers["display"].tolist()
-    sel = st.selectbox("", options=names, index=0, key="customer_select_box")
+    sel = st.selectbox("고객 선택 (검색 가능)", options=names, index=0, key="customer_select_box")
 
     # 상태 플래그
     if "accounts_grid_interacted" not in st.session_state:
