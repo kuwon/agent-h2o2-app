@@ -224,7 +224,7 @@ def _build_vertical_timeline_html(
 # ─────────────────────────────────────────────
 # Public API
 # ─────────────────────────────────────────────
-def render_policy_and_timeline_section(
+def render_timeline_section(
     customer: Dict[str, Any],
     accounts: List[Dict[str, Any]],
 ) -> None:
