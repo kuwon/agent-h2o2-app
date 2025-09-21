@@ -174,7 +174,7 @@ async def body() -> None:
         """, unsafe_allow_html=True)
 
 
-        st.subheader("대화 · 시뮬레이션 · 컨텍스트")
+        st.subheader("AI 챗봇 · 시뮬레이션 계산기· 컨텍스트 편집기")
 
         tab_chat, tab_sim, tab_ctx = st.tabs(["💬 AI에게 물어보기", "📈 시뮬레이션 계산기", "🧩 Context 미리보기/편집"])
 

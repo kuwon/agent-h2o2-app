@@ -5,7 +5,7 @@ set -e
 CURR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WS_ROOT="$(dirname "${CURR_DIR}")"
 DOCKER_FILE="Dockerfile"
-REPO="repo"
+REPO="037129617559.dkr.ecr.ap-northeast-2.amazonaws.com/h2o2"
 NAME="agent-app"
 TAG="prd"
 

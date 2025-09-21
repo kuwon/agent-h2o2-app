@@ -349,6 +349,7 @@ def render_info_pane():
     #st.markdown("---")
     colL, colR = st.columns([0.45, 0.55])
     with colL:
+        st.markdown("**선택한 고객 정보**")
         customer_display_kor = _render_customer_summary(sel_row, labels=KMAP_CUSTOMERS)
 
     #st.markdown("---")
@@ -365,6 +366,7 @@ def render_info_pane():
         select_all_on_load=True,            # 최초 렌더에서 전체 선택
         select_all_on_data_change=True,     # 고객 바꿔서 df가 교체될 때마다 전체 선택
         select_filtered_only=False,         # 필터 무관 전체 선택
+        auto_height=True,
     )
     selected_rows = _extract_selected_rows(grid_res)
     selected_df = pd.DataFrame(selected_rows) if selected_rows else pd.DataFrame()

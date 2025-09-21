@@ -22,16 +22,16 @@ ws_settings = WorkspaceSettings(
     # Repository for images
     # - local for dev, aws for prd
     #--------------------------
-    #image_repo="037129617559.dkr.ecr.ap-northeast-2.amazonaws.com/h2o2",
-    image_repo="local",
+    image_repo="037129617559.dkr.ecr.ap-northeast-2.amazonaws.com/h2o2",
+    #image_repo="local",
     # 'Name:tag' for the image
     image_name="agent-app",
     # Build images locally
     #build_images=False,
     build_images=True,
     # Push images to the registry. True for prd, False for dev
-    push_images=False,
-    #push_images=True,
+    #push_images=False,
+    push_images=True,
     # Skip cache when building images
     skip_image_cache=False,
     # Force pull images

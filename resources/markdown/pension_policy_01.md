@@ -21,50 +21,43 @@ id: pension_tax_cap_multi
 title: 연금계좌 세액공제 한도(계좌유형별/합산)
 anchor: "#pension-tax-cap-multi"
 
-# 계좌 컬럼 가정
-# - 납입금액: accounts.copt_year_pymt_amt
-# - 계좌유형: accounts.acnt_type  (값: "연금저축", "DC", "IRP")
-
 conditions:
-  # A) 연금저축 단독 한도: 600만원
-  - id: cap_ps_under
+  - id: 연금저축납입한도
     field: accounts.copt_year_pymt_amt
     op: sum_lt
     value: 6000000
     where:
       acnt_type_in: ["연금저축"]
 
-  - id: cap_ps_reach_or_over
+  - id: 연금저축납입한도
     field: accounts.copt_year_pymt_amt
     op: sum_gte
     value: 6000000
     where:
       acnt_type_in: ["연금저축"]
 
-  # B) DC/IRP 합산 한도: 900만원
-  - id: cap_dc_irp_under
+  - id: DC/IRP납입한도
     field: accounts.copt_year_pymt_amt
     op: sum_lt
     value: 9000000
     where:
       acnt_type_in: ["DC","IRP"]
 
-  - id: cap_dc_irp_reach_or_over
+  - id: DC/IRP납입한도
     field: accounts.copt_year_pymt_amt
     op: sum_gte
     value: 9000000
     where:
       acnt_type_in: ["DC","IRP"]
 
-  # C) 연금저축 + DC/IRP 전체 합산 한도: 900만원
-  - id: cap_total_under
+  - id: 연금상품전체한도
     field: accounts.copt_year_pymt_amt
     op: sum_lt
     value: 9000000
     where:
       acnt_type_in: ["연금저축","DC","IRP"]
 
-  - id: cap_total_reach_or_over
+  - id: 연금상품전체한도
     field: accounts.copt_year_pymt_amt
     op: sum_gte
     value: 9000000
@@ -72,27 +65,24 @@ conditions:
       acnt_type_in: ["연금저축","DC","IRP"]
 
 effects:
-  # UI에서 우선 보여줄 배지/하이라이트 그룹
   info:
-    - cap_ps_under
-    - cap_dc_irp_under
-    - cap_total_under
+    - 연금저축납입한도
+    - DC/IRP납입한도
+    - 연금상품전체한도
   ineligible:
-    - cap_ps_reach_or_over
-    - cap_dc_irp_reach_or_over
-    - cap_total_reach_or_over
+    - 연금저축납입한도
+    - DC/IRP납입한도
+    - 연금상품전체한도
 
 snippets:
-  cap_ps_under: >
+  연금저축납입한도: >
     A. 연금저축 올해 납입합계가 600만원 미만입니다. 한도 내 추가 납입 시 세액공제 가능성이 있습니다.
-  cap_ps_reach_or_over: >
+  연금저축납입한도: >
     A. 연금저축 올해 납입합계가 600만원 이상입니다. 연금저축 한도는 도달했습니다.
-
-  cap_dc_irp_under: >
+  DC/IRP납입한도: >
     B. DC/IRP 올해 납입합계가 900만원 미만입니다. 한도 내 추가 납입 시 세액공제 가능성이 있습니다.
-  cap_dc_irp_reach_or_over: >
+  DC/IRP납입한도: >
     B. DC/IRP 올해 납입합계가 900만원 이상입니다. DC/IRP 한도는 도달했습니다.
-
   cap_total_under: >
     C. 연금저축+DC/IRP 전체 합산이 900만원 미만입니다. 합산 한도 내 추가 납입 시 세액공제 가능성이 있습니다.
   cap_total_reach_or_over: >

@@ -35,6 +35,7 @@ def aggrid_table(
     select_all_on_data_change: bool = False,# rowData 바뀔 때마다 전체 선택
     select_filtered_only: bool = False,     # 필터된 행만 선택
     row_id_field: Optional[str] = None,     # 고유 ID 컬럼(선택)
+    auto_height: bool = True,   # 그리드가 행 수에 맞춰 자동으로 늘어나도록
 ):
     if df is None:
         df = pd.DataFrame()
@@ -77,6 +78,9 @@ def aggrid_table(
 
     grid_options = gob.build()
     grid_options["suppressHorizontalScroll"] = not bool(allow_horizontal_scroll)
+
+    if auto_height:
+        grid_options["domLayout"] = "autoHeight"
 
     # 이벤트 핸들러 주입 (중복 코드 없이 안전하게)
     handler = _mk_select_all_handler(select_filtered_only)
