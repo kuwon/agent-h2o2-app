@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 from datetime import datetime, date
 
+from agno.utils.log import logger
 from ui.components.policy_engine import load_policies, evaluate_policies
 
 MARKDOWN_DIR = Path("resources/markdown")  # 필요 시 경로 조정
@@ -81,33 +82,84 @@ def _get_snippets_map(item: Any) -> Dict[str, str]:
     return {}
 
 def _try_evaluate_policies(policies, customer_row, accounts_df):
-    """
-    1차: 기존 evaluate_policies 사용
-    2차: AttributeError('... .get') 등 발생 시 객체→dict 평탄화 후 폴백 평가기로 처리
-    """
+    """where가 있으면 폴백 평가기로 강제 처리(조건별 부분집합 집계 보장)."""
+    # where 존재 여부 탐지
+    def _has_where(p):
+        try:
+            conds = getattr(p, "conditions", None) or (p.get("conditions") if isinstance(p, dict) else None) or []
+        except Exception:
+            conds = []
+        for c in conds:
+            try:
+                w = getattr(c, "where", None) if not isinstance(c, dict) else c.get("where")
+            except Exception:
+                w = None
+            if isinstance(w, dict) and w:
+                return True
+        return False
+
+    try:
+        has_where = any(_has_where(p) for p in (policies or []))
+    except Exception:
+        has_where = False
+
+    if has_where:
+        pol_dicts = [_as_dict(p) for p in (policies or [])]
+        return _evaluate_policies_fallback(pol_dicts, customer_row, accounts_df)
+
+    # where 없으면 기존 엔진 시도
     try:
         return evaluate_policies(policies, customer_row, accounts_df)
     except AttributeError:
         pol_dicts = [_as_dict(p) for p in (policies or [])]
         return _evaluate_policies_fallback(pol_dicts, customer_row, accounts_df)
-    except Exception:
-        raise
 
-def _apply_where_df(df: pd.DataFrame, where: dict | None) -> pd.DataFrame:
+def _apply_where_df(df: pd.DataFrame, where: Optional[Dict[str, Any]]) -> pd.DataFrame:
     if where is None or df.empty:
         return df
     mask = pd.Series(True, index=df.index)
+
+    def _norm_list(v):
+        if isinstance(v, (list, tuple, set)):
+            return [str(x).strip().upper() for x in v]
+        return [str(v).strip().upper()]
+
     for k, v in where.items():
         if k.endswith("_in"):
             col = k[:-3]
-            vals = v if isinstance(v, (list, tuple, set)) else [v]
-            if col in df.columns:
-                mask &= df[col].isin(list(vals))
+            if col not in df.columns:
+                continue
+            vals_u = _norm_list(v)
+            if pd.api.types.is_object_dtype(df[col]) or pd.api.types.is_string_dtype(df[col]):
+                col_u = df[col].astype(str).str.strip().str.upper()
+                m = pd.Series(False, index=df.index)
+                for term in vals_u:
+                    if not term:
+                        continue
+                    m |= col_u.str.contains(term, na=False)  # 부분일치 + 대소문자 무시
+                mask &= m
+            else:
+                mask &= df[col].isin(v if isinstance(v, (list, tuple, set)) else [v])
         else:
             col = k
-            if col in df.columns:
+            if col not in df.columns: 
+                continue
+            if pd.api.types.is_object_dtype(df[col]) or pd.api.types.is_string_dtype(df[col]):
+                lhs = df[col].astype(str).str.strip().str.upper()
+                rhs = str(v).strip().upper()
+                mask &= (lhs == rhs)
+            else:
                 mask &= (df[col] == v)
     return df[mask]
+
+
+def _get(obj, key, default=None):
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+def _to_dict(obj):
+    return obj if isinstance(obj, dict) else getattr(obj, "__dict__", {}) or {}
 
 def _to_date(x) -> date | None:
     if x is None or (isinstance(x, float) and pd.isna(x)):
@@ -130,13 +182,15 @@ def _days_until(d: date | None, today: date | None = None) -> int | None:
     t = today or date.today()
     return (d - t).days
 
-def _eval_cond_fallback(cond: dict, customer_row: pd.Series, accounts_df: pd.DataFrame) -> dict:
-    cid   = cond.get("id") or cond.get("name")
-    field = str(cond.get("field") or "")
-    op    = str(cond.get("op") or "")
-    value = cond.get("value")
-    where = cond.get("where")
-    any_all = str(cond.get("any_all") or "any").lower()
+def _eval_cond_fallback(cond: dict | Condition, customer_row: pd.Series, accounts_df: pd.DataFrame) -> dict:
+    # ★ 객체/딕셔너리 공용
+    cdict = _to_dict(cond)
+    cid   = _get(cdict, "id") or _get(cdict, "name")
+    field = str(_get(cdict, "field") or "")
+    op    = str(_get(cdict, "op") or "")
+    value = _get(cdict, "value")
+    any_all = str(_get(cdict, "any_all") or "any").lower()
+    where = _get(cdict, "where")  # ← from_dict에서 이미 정규화되어 들어옴
 
     parts = field.split(".")
     ns = parts[0] if parts else ""
@@ -156,19 +210,18 @@ def _eval_cond_fallback(cond: dict, customer_row: pd.Series, accounts_df: pd.Dat
                 elif op == "sum_eq":  result = s == value
                 elif op == "sum_ne":  result = s != value
         elif op.startswith("count_"):
-            c = len(sub) if (col not in sub.columns) else sub[col].notna().sum()
-            current = int(c)
+            cnum = len(sub) if (col not in sub.columns) else sub[col].notna().sum()
+            current = int(cnum)
             if isinstance(value, (int, float)):
                 v = float(value)
-                if   op == "count_gte": result = c >= v
-                elif op == "count_gt":  result = c >  v
-                elif op == "count_lte": result = c <= v
-                elif op == "count_lt":  result = c <  v
-                elif op == "count_eq":  result = c == v
-                elif op == "count_ne":  result = c != v
+                if   op == "count_gte": result = cnum >= v
+                elif op == "count_gt":  result = cnum >  v
+                elif op == "count_lte": result = cnum <= v
+                elif op == "count_lt":  result = cnum <  v
+                elif op == "count_eq":  result = cnum == v
+                elif op == "count_ne":  result = cnum != v
         elif op == "within_days":
-            flags = []
-            dds = []
+            flags, dds = [], []
             for _, r in sub.iterrows():
                 dd = _days_until(_to_date(r.get(col)))
                 dds.append(dd)
@@ -207,12 +260,12 @@ def _eval_cond_fallback(cond: dict, customer_row: pd.Series, accounts_df: pd.Dat
     else:
         current, result = "(unknown namespace)", False
 
-    # cond-level snippet만 보유. 상위 policy.snippets는 UI에서 별도로 합쳐서 조회
     return {
         "id": cid, "field": field, "op": op, "value": value,
         "current": current, "result": result, "where": where,
-        "snippet": cond.get("snippet")
+        "snippet": _get(cdict, "snippet"),
     }
+
 
 def _evaluate_policies_fallback(policies: list, customer_row: pd.Series, accounts_df: pd.DataFrame) -> list:
     out = []
@@ -337,7 +390,7 @@ def render_policy_adaption_section(
 ) -> None:
     """정책 적용 섹션 렌더러 (Dict 입력)"""
     if not _has_selected_customer(customer):
-        st.info("좌측에서 고객을 선택하면 정책 적용 결과를 보여드릴게요.")
+        st.info("고객을 선택하면 정책 적용 결과를 보여드릴게요.")
         return
 
     customer_row, accounts_df = _coerce_inputs(customer, accounts)
@@ -358,7 +411,7 @@ def render_policy_adaption_section(
         return
 
     items = evaled[:max_policies] if len(evaled) > max_policies else evaled
-
+ 
     for item in items:
         title     = _sg(item, "title") or _sg(item, "policy_id") or _sg(item, "id") or "정책"
         anchor    = _sg(item, "anchor")

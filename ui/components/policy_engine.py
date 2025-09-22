@@ -18,6 +18,21 @@ class Condition:
     op: str                  # e.g., 'age_gte_years', 'within_days', ...
     value: Optional[Union[int, float, str]] = None
     any_all: str = "any"     # 'any'|'all' for accounts.* aggregation (default any)
+    snippet: Optional[str] = None
+    where: Optional[Dict[str, Any]] = None   # ★ NEW
+
+    @staticmethod
+    def from_dict(d: Dict[str, Any]) -> "Condition":
+        raw_where = d.get("where") or d.get("filters") or d.get("filter") or d.get("scope")
+        return Condition(
+            id=d.get("id") or d.get("name") or "",
+            field=d.get("field") or "",
+            op=d.get("op") or "",
+            value=d.get("value"),
+            any_all=(d.get("any_all") or "any"),
+            snippet=d.get("snippet"),
+            where=_normalize_where(raw_where),  # ★ NEW
+        )
 
 @dataclass
 class Policy:
@@ -37,34 +52,23 @@ class Policy:
 # ─────────────────────────────────────────────
 # NEW: dict/객체 겸용 안전 접근 유틸
 # ─────────────────────────────────────────────
-def _sg(obj: Any, key: str, default: Any = None) -> Any:
-    """safe-get: dict면 get, 객체면 getattr, 둘 다 아니면 default"""
-    if obj is None:
-        return default
-    if isinstance(obj, dict):
-        return obj.get(key, default)
-    return getattr(obj, key, default)
+def _normalize_where(d: Any) -> Optional[Dict[str, Any]]:
+    """YAML에서 읽은 where/filter(s)/scope를 표준 dict로 정규화."""
+    if not isinstance(d, dict) or not d:
+        return None
+    out: Dict[str, Any] = {}
+    for k, v in d.items():
+        if k.endswith("_in"):
+            if isinstance(v, (list, tuple, set)):
+                out[k] = list(v)
+            else:
+                out[k] = [v]
+        else:
+            out[k] = v
+    return out
 
-def _as_dict(obj: Any) -> Dict[str, Any]:
-    """객체를 dict처럼 평탄화(가능하면 __dict__)"""
-    if obj is None:
-        return {}
-    if isinstance(obj, dict):
-        return obj
-    # dataclass/일반 객체 대응
-    d = {}
-    for attr in dir(obj):
-        if attr.startswith("_"):
-            continue
-        try:
-            val = getattr(obj, attr)
-        except Exception:
-            continue
-        # 메서드/콜러블 제외
-        if callable(val):
-            continue
-        d[attr] = val
-    return d
+
+
 
 def _to_date(x: Any) -> Optional[date]:
     if x is None or pd.isna(x):
@@ -153,34 +157,17 @@ def load_policies(markdown_dir: Union[str, Path]) -> List[Policy]:
         except Exception:
             continue
         for block in _extract_policy_yaml_blocks(text):
-            pid = str(block.get("id") or p.stem)
-            title = str(block.get("title") or p.stem)
-            anchor = block.get("anchor")
             conds_raw = block.get("conditions", []) or []
-            effects = block.get("effects", {}) or {}
-            snippets = block.get("snippets", {}) or {}
-
-            conditions: List[Condition] = []
-            for c in conds_raw:
-                conditions.append(
-                    Condition(
-                        id=str(c.get("id")),
-                        field=str(c.get("field")),
-                        op=str(c.get("op")),
-                        value=c.get("value"),
-                        any_all=str(c.get("any_all", "any")).lower(),
-                    )
-                )
-
+            conds = [Condition.from_dict(c) for c in conds_raw]   # ★ 여기서 흡수
             policies.append(
                 Policy(
-                    pid=pid,
-                    title=title,
-                    file_path=p,
-                    anchor=anchor,
-                    conditions=conditions,
-                    effects=effects,
-                    snippet_map={str(k): str(v) for k, v in snippets.items()},
+                    pid = str(block.get("id") or p.stem),
+                    title = str(block.get("title") or p.stem),
+                    anchor = block.get("anchor"),
+                    file_path=block.get("_file") or block.get("file"),
+                    conditions=conds,
+                    effects=block.get("effects", {}) or {},
+                    snippet_map=block.get("snippets", {}) or {},
                 )
             )
     return policies

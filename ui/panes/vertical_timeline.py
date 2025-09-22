@@ -5,7 +5,7 @@ import hashlib
 import pandas as pd
 import streamlit as st
 from pathlib import Path
-from ui.components.policy_engine import build_timeline  # 필요 시 load_policies/evaluate_policies 추가
+from ui.components.policy_engine import build_timeline
 
 MARKDOWN_DIR = Path("resources/markdown")  # 필요 시 변경
 

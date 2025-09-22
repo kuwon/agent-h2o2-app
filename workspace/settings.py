@@ -21,6 +21,7 @@ ws_settings = WorkspaceSettings(
     #--------------------------
     # Repository for images
     # - local for dev, aws for prd
+    # dev <-> prd: change image_repo & push_images
     #--------------------------
     image_repo="037129617559.dkr.ecr.ap-northeast-2.amazonaws.com/h2o2",
     #image_repo="local",
